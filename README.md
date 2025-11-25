@@ -11,3 +11,18 @@ SDXL 作業ディレクトリ下にモデルを置きます。
 MODEL="./models/xxxxxxxx.safetensors"
 ```
 
+## MCP
+### 初期化
+```json
+{"jsonrpc":"2.0","method":"initialize","id":"1","params":{"protocolVersion":"2024-11-05","clientInfo":{"name":"example-client","version":"0.0.1"},"capabilities":{}}}
+```
+
+## ツールの取得
+```json
+{"jsonrpc": "2.0", "id": "2", "method": "tools/list"}
+```
+
+## ツールの実行
+```json
+{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"kimono, open-mouth, bob-cut, black-hair, green-eyes"}}}
+```

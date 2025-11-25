@@ -4,9 +4,157 @@ import torch
 import argparse
 from dotenv import load_dotenv
 import os
-load_dotenv()
+import asyncio
+from mcp.server.models import InitializationOptions
+from mcp.server import NotificationOptions, Server
+from mcp.server.stdio import stdio_server
+from mcp.types import Tool, TextContent
+from pydantic import Field
+from typing import Optional
+import contextlib
+
 
 DEFALUT_MODEL = ""
+
+load_dotenv()
+server = Server("image-generator-server")
+pipe = None
+default_negative_prompt = None
+output_base_path = None
+
+@server.list_tools()
+async def handle_list_tools() -> list[Tool]:
+    """利用可能なツールのリストを返す"""
+    return [
+        Tool(
+            name="generate_image",
+            description="プロンプトから画像を生成します",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "画像生成用のプロンプトテキスト",
+                    },
+                    "negative_prompt": {
+                        "type": "string",
+                        "description": "ネガティブプロンプト（オプション）",
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": "出力ベースパス（オプション）",
+                    },
+                },
+                "required": ["prompt"],
+            },
+        ),
+    ]
+
+# ツールの呼び出し処理
+@server.call_tool()
+async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
+    """ツールを実行して結果を返す"""
+    if name != "generate_image":
+        raise ValueError(f"Unknown tool: {name}")
+    
+    # パラメータの取得
+    prompt = arguments.get("prompt", "").strip()
+    negative_prompt = arguments.get("negative_prompt", default_negative_prompt)
+    output_path = arguments.get("output_path", output_base_path)
+    
+    # 空のプロンプトチェック
+    if not prompt:
+        return [TextContent(
+            type="text",
+            text="エラー: プロンプトが空です"
+        )]
+    
+    try:        
+        image_path = generate_and_save_image(
+            pipe,
+            prompt,
+            negative_prompt,
+            output_path,
+            prefix_message="MCP"
+        )
+        
+        if image_path:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "success": True,
+                        "output": image_path
+                    })
+                )
+            ]
+        else:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "success": False,
+                        "message": prompt
+                    })
+                )
+            ]
+    
+    except Exception as e:
+        error_msg = f"画像生成中にエラーが発生しました: {str(e)}"
+        return [TextContent(
+            type="text",
+            text=error_msg
+        )]
+
+def set_server_config(diffusion_pipe, neg_prompt: str, output_path: str):
+    """サーバーの設定を初期化"""
+    global pipe, default_negative_prompt, output_base_path
+    pipe = diffusion_pipe
+    default_negative_prompt = neg_prompt
+    output_base_path = output_path
+
+# サーバーの起動
+async def run_mcp_server():
+    """MCPサーバーを起動"""
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="image-generator-server",
+                    server_version="0.1.0",
+                    capabilities=server.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
+                ),
+            )
+    except KeyboardInterrupt:
+        print("MCP mode interrupted by user. Exiting.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"MCP mode encountered an unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def run_mcp_mode(diffusion_pipe, args, base_output_path):
+    """
+    MCP モードでサーバーを起動
+    
+    Args:
+        diffusion_pipe: 画像生成パイプライン
+        args: コマンドライン引数（negative_promptを含む）
+        base_output_path: 出力ベースパス
+    """
+    # サーバー設定を初期化
+    set_server_config(
+        diffusion_pipe,
+        args.negative_prompt,
+        base_output_path
+    )
+    
+    # 非同期サーバーを起動
+    asyncio.run(run_mcp_server())
 
 def ensure_dir(path):
     dir_name = os.path.dirname(path) or "."
@@ -67,6 +215,9 @@ def save_images(pipe, prompt, negative_prompt, output_path, num_images=1):
 
 def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path, prefix_message=""):
     """Generates a single image and saves it to a unique path."""
+    if prefix_message == "MCP":
+        pipe.set_progress_bar_config(disable=True)
+
     try:
         result = pipe(prompt, negative_prompt=negative_prompt)
         for image in result.images:
@@ -80,30 +231,6 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path, pre
     except Exception as e:
         print(f"{prefix_message} Error generating image for prompt '{prompt}': {e}", file=sys.stderr)
     return None
-
-def run_mcp_mode(pipe, args, output_base_path):
-    """Handles image generation in Multi-Client Protocol mode."""
-    print("Entering MCP mode. Send prompts via stdin (one per line). Output paths to stdout.", file=sys.stderr)
-    try:
-        for line_num, line in enumerate(sys.stdin):
-            current_prompt = line.strip()
-            if not current_prompt:
-                print(f"MCP: Skipping empty line {line_num+1}.", file=sys.stderr)
-                continue
-
-            print(f"MCP: Processing line {line_num+1} with prompt: '{current_prompt}'", file=sys.stderr)
-            path = generate_and_save_image(
-                pipe,
-                current_prompt,
-                args.negative_prompt,
-                output_base_path,
-                prefix_message="MCP"
-            )
-            if path:
-                print(path) # Output generated path to stdout for the MCP client
-    except KeyboardInterrupt:
-        print("MCP mode interrupted by user. Exiting.", file=sys.stderr)
-        sys.exit(1)
 
 def run_normal_mode(pipe, args, output_base_path):
     """Handles image generation in normal mode."""
@@ -145,12 +272,15 @@ def main():
     # モデルロード（GPUがなければCPUへフォールバック）
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model_id = args.model_id
-    print(f"Loading model {model_id} to {device}...", file=sys.stderr)
-    pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
 
     if args.mcp:
-        run_mcp_mode(pipe, args, output_base_path)
+        with contextlib.redirect_stdout(open(os.devnull, "w")), \
+            contextlib.redirect_stderr(open(os.devnull, "w")):
+            pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
+            run_mcp_mode(pipe, args, output_base_path)
     else:
+        print(f"Loading model {model_id} to {device}...", file=sys.stderr)
+        pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
         run_normal_mode(pipe, args, output_base_path)
     
 if __name__ == "__main__":
