@@ -247,7 +247,7 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path, pre
         print(f"{prefix_message} Error generating image for prompt '{prompt}': {e}", file=sys.stderr)
     return None
 
-def run_normal_mode(pipe, args, output_base_path):
+def run_normal_mode(pipe, args, output_base_path, parser):
     """Handles image generation in normal mode."""
     if args.prompt is None:
         parser.error("The 'prompt' argument is required in normal mode. Use --help for more information.")
@@ -295,7 +295,7 @@ def main():
     else:
         print(f"Loading model {model_id} to {device}...", file=sys.stderr)
         pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
-        run_normal_mode(pipe, args, output_base_path)
+        run_normal_mode(pipe, args, output_base_path, parser)
     
 if __name__ == "__main__":
     main()
