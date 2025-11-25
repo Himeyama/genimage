@@ -12,6 +12,9 @@ from mcp.types import Tool, TextContent
 from pydantic import Field
 from typing import Optional
 import contextlib
+from diffusers.utils import logging
+import io
+import json
 
 
 DEFALUT_MODEL = ""
@@ -154,7 +157,14 @@ def run_mcp_mode(diffusion_pipe, args, base_output_path):
     )
     
     # 非同期サーバーを起動
-    asyncio.run(run_mcp_server())
+    try:
+        asyncio.run(run_mcp_server())
+    except KeyboardInterrupt:
+        print("MCP mode interrupted by user. Exiting.", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"MCP mode encountered an unexpected error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 def ensure_dir(path):
     dir_name = os.path.dirname(path) or "."
@@ -172,20 +182,25 @@ def unique_path(path):
         i += 1
     return candidate
 
-def load_pipeline(model_id, device="cuda"):
+def load_pipeline(model_id, device="cuda", mode="default"):
     if os.path.exists(model_id):
         if os.path.isfile(model_id):
+            old_stderr = sys.stderr
+            if mode == "mcp":
+                sys.stderr = io.StringIO()
             pipe = StableDiffusionXLPipeline.from_single_file(
                 model_id,
                 torch_dtype=torch.float16,
-                use_safetensors=True,
+                use_safetensors=True
             )
+            if mode == "mcp":
+                sys.stderr = old_stderr
             pipe.to(device)
         else:
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 model_id,
                 torch_dtype=torch.float16,
-                use_safetensors=True,
+                use_safetensors=True
             )
             pipe.to(device)
     else:
@@ -274,10 +289,9 @@ def main():
     model_id = args.model_id
 
     if args.mcp:
-        with contextlib.redirect_stdout(open(os.devnull, "w")), \
-            contextlib.redirect_stderr(open(os.devnull, "w")):
-            pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
-            run_mcp_mode(pipe, args, output_base_path)
+        logging.disable_progress_bar()
+        pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device, mode="mcp")
+        run_mcp_mode(pipe, args, output_base_path)
     else:
         print(f"Loading model {model_id} to {device}...", file=sys.stderr)
         pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
