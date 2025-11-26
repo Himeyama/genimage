@@ -1,6 +1,13 @@
 # GENIMAGE
 画像生成 AI (SDXL) を使用して、コマンドライン (CLI) で画像を作成します。
 
+## かんたん環境構築
+簡単環境構築を実施するには、WSL2 (Ubuntu、AlmaLinux 等) と uv コマンドのインストールが前提です。
+
+```sh
+curl https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.sh | bash
+```
+
 ## 使い方
 
 ```
