@@ -1,3 +1,4 @@
+import base64
 import sys
 from diffusers import StableDiffusionXLPipeline
 import torch
@@ -9,9 +10,6 @@ from mcp.server.models import InitializationOptions
 from mcp.server import NotificationOptions, Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
-from pydantic import Field
-from typing import Optional
-import contextlib
 from diffusers.utils import logging
 import io
 import json
@@ -73,21 +71,22 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         )]
     
     try:        
-        image_path = generate_and_save_image(
+        base64_image = generate_and_save_image(
             pipe,
             prompt,
             negative_prompt,
             output_path,
-            prefix_message="MCP"
+            prefix_message="MCP",
+            output="base64"
         )
         
-        if image_path:
+        if base64_image:
             return [
                 TextContent(
                     type="text",
                     text=json.dumps({
                         "success": True,
-                        "output": image_path
+                        "output": base64_image,
                     })
                 )
             ]
@@ -228,7 +227,7 @@ def save_images(pipe, prompt, negative_prompt, output_path, num_images=1):
         saved_paths.append(out_path)
     return saved_paths
 
-def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path, prefix_message=""):
+def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path=None, prefix_message="", output="path"):
     """Generates a single image and saves it to a unique path."""
     if prefix_message == "MCP":
         pipe.set_progress_bar_config(disable=True)
@@ -236,11 +235,19 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path, pre
     try:
         result = pipe(prompt, negative_prompt=negative_prompt)
         for image in result.images:
-            try:
-                path = unique_path(output_base_path)
-            except KeyboardInterrupt:
-                print(f"{prefix_message} interrupted by user. Exiting.", file=sys.stderr)
-                sys.exit(1)
+            if output_base_path:
+                try:
+                    path = unique_path(output_base_path)
+                except KeyboardInterrupt:
+                    print(f"{prefix_message} interrupted by user. Exiting.", file=sys.stderr)
+                    sys.exit(1)
+            
+            if output == "base64":
+                buffered = io.BytesIO()
+                image.save(buffered, format="PNG")  # または "JPEG" など
+                img_bytes = buffered.getvalue()
+                return base64.b64encode(img_bytes).decode('utf-8')
+
             image.save(path)
             return path
     except Exception as e:
@@ -258,11 +265,12 @@ def run_normal_mode(pipe, args, output_base_path, parser):
             pipe,
             args.prompt,
             args.negative_prompt,
-            output_base_path,
+            output=output_base_path,
             prefix_message="Normal mode"
         )
         if path:
             print(f"Generated image: {path}", file=sys.stderr)
+
 def main():
     parser = argparse.ArgumentParser(description="Generate an image using Stable Diffusion.")
     parser.add_argument("--mcp", action="store_true",
