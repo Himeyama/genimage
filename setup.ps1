@@ -1,4 +1,4 @@
-﻿$DIR = Join-Path $HOME "genimage"
+$DIR = Join-Path $HOME "genimage"
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     [Console]::Error.WriteLine("❌ uv コマンドが存在しません")
