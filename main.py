@@ -61,7 +61,6 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     # パラメータの取得
     prompt = arguments.get("prompt", "").strip()
     negative_prompt = arguments.get("negative_prompt", default_negative_prompt)
-    output_path = arguments.get("output_path", output_base_path)
     
     # 空のプロンプトチェック
     if not prompt:
@@ -71,35 +70,70 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         )]
     
     try:        
-        base64_image = generate_and_save_image(
-            pipe,
-            prompt,
-            negative_prompt,
-            output_path,
-            prefix_message="MCP",
-            output="base64"
-        )
-        
-        if base64_image:
-            return [
-                TextContent(
+        client_provided_output_path = arguments.get("output_path")
+
+        if client_provided_output_path:
+            # クライアントが出力パスを指定した場合、そのパスに画像を保存してパスを返す
+            image_path = generate_and_save_image(
+                pipe,
+                prompt,
+                negative_prompt,
+                output_base_path=client_provided_output_path,
+                prefix_message="MCP",
+                output="path"
+            )
+            
+            if image_path:
+                return [
+                    TextContent(
                     type="text",
                     text=json.dumps({
                         "success": True,
-                        "output": base64_image,
+                        "output": image_path,
                     })
-                )
-            ]
+                    )
+                ]
+            else:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "success": False,
+                            "message": f"画像の生成または指定されたパス '{client_provided_output_path}' への保存に失敗しました。",
+                        })
+                    )
+                ]
         else:
-            return [
-                TextContent(
-                    type="text",
-                    text=json.dumps({
-                        "success": False,
-                        "message": prompt
-                    })
-                )
-            ]
+            # クライアントが出力パスを指定しなかった場合、画像を生成して base64 で返す
+            base64_image = generate_and_save_image(
+                pipe,
+                prompt,
+                negative_prompt,
+                output_base_path=output_base_path, # Base64出力の場合でも、内部処理で利用される可能性があるためデフォルトパスを渡す
+                prefix_message="MCP",
+                output="base64"
+            )
+            
+            if base64_image:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "success": True,
+                            "output": base64_image,
+                        })
+                    )
+                ]
+            else:
+                return [
+                    TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "success": False,
+                            "message": "Base64画像の生成に失敗しました。",
+                        })
+                    )
+                ]
     
     except Exception as e:
         error_msg = f"画像生成中にエラーが発生しました: {str(e)}"
@@ -304,8 +338,6 @@ def main():
     # モデルロード（GPUがなければCPUへフォールバック）
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model_id = args.model_id
-
-    print(f"Detected device: {device}", file=sys.stderr)
 
     if args.mcp:
         logging.disable_progress_bar()

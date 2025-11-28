@@ -9,7 +9,7 @@ Windows 環境で簡単環境構築を実施するには、git コマンド及�
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.ps1 | iex"
 ```
 
-### Linux
+### Linux / WSL2
 Linux 環境で簡単環境構築を実施するには、curl コマンド、git コマンド及び uv コマンドのインストールが必要です。
 
 ```sh
@@ -18,16 +18,16 @@ curl https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup
 
 ## 簡単な使い方
 まず、モデルの配置が必要です。
-例えば、モデルを `$HOME/genimage/models/xxxxxxxx.safetensors` に配置します。
+例えば、モデルを `$HOME/genimage/models/<MODEL>.safetensors` に配置します。
 
 ### Windows / Linux
 ```ps1
-uv run --directory $HOME/genimage python -m main --model models/xxxxxxxx.safetensors ""
+uv run --directory $HOME/genimage python -m main --model models/<MODEL>.safetensors 
 ```
 
 ### WSL2
 ```ps1
-uv run --directory $HOME/genimage python -m main --model models/anime-2d-ill_v3.fp16.safetensors
+wsl -- uv run --directory $HOME/genimage python -m main --model models/<MODEL>.safetensors
 ```
 
 ## 詳細な使い方
@@ -116,7 +116,12 @@ uv run --directory ~/genimage python -m main --mcp
 {"jsonrpc": "2.0", "id": "2", "method": "tools/list"}
 ```
 
-> ツールの実行
+> ツールの実行 (BASE64 で生成画像を取得)
 ```json
 {"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"kimono, open-mouth, bob-cut, black-hair, green-eyes"}}}
+```
+
+> ツールの実行 (出力パスに生成画像を出力)
+```json
+{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"kimono, open-mouth, bob-cut, black-hair, green-eyes","output_path":"output.png"}}}
 ```
