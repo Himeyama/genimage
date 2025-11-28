@@ -2,7 +2,16 @@
 画像生成 AI (SDXL) を使用して、コマンドライン (CLI) で画像を作成します。
 
 ## かんたん環境構築
-簡単環境構築を実施するには、WSL2 (Ubuntu、AlmaLinux 等) と uv コマンドのインストールが前提です。
+### Windows
+Windows 環境で簡単環境構築を実施するには、git コマンド及び uv コマンドのインストールが必要です。
+
+```ps1
+iwr "https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.ps1" -UseBasicParsing | iex
+```
+
+
+### Linux
+Linux 環境で簡単環境構築を実施するには、curl コマンド、git コマンド及び uv コマンドのインストールが必要です。
 
 ```sh
 curl https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.sh | bash

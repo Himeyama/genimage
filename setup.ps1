@@ -1,4 +1,4 @@
-$dir = "$HOME\genimage"
+﻿$dir = "$HOME\genimage"
 
 if (Test-Path $DIR) {
     Write-Error "❌ $DIR は既に存在します"
