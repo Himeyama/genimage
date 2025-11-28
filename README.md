@@ -9,7 +9,6 @@ Windows 環境で簡単環境構築を実施するには、git コマンド及�
 powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.ps1 | iex"
 ```
 
-
 ### Linux
 Linux 環境で簡単環境構築を実施するには、curl コマンド、git コマンド及び uv コマンドのインストールが必要です。
 
@@ -17,7 +16,21 @@ Linux 環境で簡単環境構築を実施するには、curl コマンド、git
 curl https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.sh | bash
 ```
 
-## 使い方
+## 簡単な使い方
+まず、モデルの配置が必要です。
+例えば、モデルを `$HOME/genimage/models/xxxxxxxx.safetensors` に配置します。
+
+### Windows / Linux
+```ps1
+uv run --directory $HOME/genimage python -m main --model models/xxxxxxxx.safetensors ""
+```
+
+### WSL2
+```ps1
+uv run --directory $HOME/genimage python -m main --model models/anime-2d-ill_v3.fp16.safetensors
+```
+
+## 詳細な使い方
 
 ```
 usage: main.py [-h] [--mcp] [--model-id MODEL_ID] [--negative-prompt NEGATIVE_PROMPT] [--output OUTPUT] [--num-images NUM_IMAGES] [prompt]

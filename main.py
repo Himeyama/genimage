@@ -182,6 +182,12 @@ def unique_path(path):
     return candidate
 
 def load_pipeline(model_id, device="cuda", mode="default"):
+    # Set torch_dtype conditionally based on the device
+    if device == "cpu":
+        dtype_args = {}
+    else:
+        dtype_args = {"torch_dtype": torch.float16}
+
     if os.path.exists(model_id):
         if os.path.isfile(model_id):
             old_stderr = sys.stderr
@@ -189,8 +195,8 @@ def load_pipeline(model_id, device="cuda", mode="default"):
                 sys.stderr = io.StringIO()
             pipe = StableDiffusionXLPipeline.from_single_file(
                 model_id,
-                torch_dtype=torch.float16,
-                use_safetensors=True
+                use_safetensors=True,
+                **dtype_args
             )
             if mode == "mcp":
                 sys.stderr = old_stderr
@@ -198,15 +204,15 @@ def load_pipeline(model_id, device="cuda", mode="default"):
         else:
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 model_id,
-                torch_dtype=torch.float16,
-                use_safetensors=True
+                use_safetensors=True,
+                **dtype_args
             )
             pipe.to(device)
     else:
         pipe = StableDiffusionXLPipeline.from_pretrained(
             model_id,
-            torch_dtype=torch.float16,
-            use_safetensors=True
+            use_safetensors=True,
+            **dtype_args
         )
         pipe.to(device)
     return pipe
@@ -227,7 +233,7 @@ def save_images(pipe, prompt, negative_prompt, output_path, num_images=1):
         saved_paths.append(out_path)
     return saved_paths
 
-def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path=None, prefix_message="", output="path"):
+def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="images/output.png", prefix_message="", output="path"):
     """Generates a single image and saves it to a unique path."""
     if prefix_message == "MCP":
         pipe.set_progress_bar_config(disable=True)
@@ -235,6 +241,7 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path=None
     try:
         result = pipe(prompt, negative_prompt=negative_prompt)
         for image in result.images:
+            path = output_base_path
             if output_base_path:
                 try:
                     path = unique_path(output_base_path)
