@@ -184,8 +184,10 @@ def unique_path(path):
 def load_pipeline(model_id, device="cuda", mode="default"):
     # Set torch_dtype conditionally based on the device
     if device == "cpu":
-        dtype_args = {}
+        # Explicitly use torch.float32 for CPU to avoid float16 compatibility issues
+        dtype_args = {"torch_dtype": torch.float32}
     else:
+        # Use torch.float16 for non-CPU devices (e.g., GPU) for performance
         dtype_args = {"torch_dtype": torch.float16}
 
     if os.path.exists(model_id):
