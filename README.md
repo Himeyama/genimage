@@ -6,7 +6,7 @@
 Windows 環境で簡単環境構築を実施するには、git コマンド及び uv コマンドのインストールが必要です。
 
 ```ps1
-iwr "https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.ps1" -UseBasicParsing | iex
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/Himeyama/genimage/refs/heads/master/setup.ps1 | iex"
 ```
 
 
