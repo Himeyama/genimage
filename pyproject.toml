@@ -13,8 +13,18 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "safetensors>=0.7.0",
     "scipy>=1.16.3",
-    "torch>=2.6.0",
-    "torchaudio>=2.6.0",
-    "torchvision>=0.21.0",
+    "torch==2.6.0+cu124",
+    "torchaudio==2.6.0+cu124",
+    "torchvision==0.21.0+cu124",
     "transformers>=4.57.1",
 ]
+
+[tool.uv.sources]
+torch = { index = "torch-cuda" }
+torchaudio = { index = "torch-cuda" }
+torchvision = { index = "torch-cuda" }
+
+[[tool.uv.index]]
+name = "torch-cuda"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

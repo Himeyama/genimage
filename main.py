@@ -269,7 +269,7 @@ def run_normal_mode(pipe, args, output_base_path, parser):
         parser.error("The 'prompt' argument is required in normal mode. Use --help for more information.")
 
     print(f"Generating {args.num_images} images for prompt: '{args.prompt}'", file=sys.stderr)
-    for i in range(args.num_images):
+    for _ in range(args.num_images):
         path = generate_and_save_image(
             pipe,
             args.prompt,
@@ -304,6 +304,8 @@ def main():
     # モデルロード（GPUがなければCPUへフォールバック）
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model_id = args.model_id
+
+    print(f"Detected device: {device}", file=sys.stderr)
 
     if args.mcp:
         logging.disable_progress_bar()
