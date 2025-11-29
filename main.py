@@ -130,7 +130,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                         type="text",
                         text=json.dumps({
                             "success": False,
-                            "message": "Base64画像の生成に失敗しました。",
+                            "message": "Base64 画像の生成に失敗しました。",
                         })
                     )
                 ]
@@ -299,10 +299,8 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="ima
 
 def run_normal_mode(pipe, args, output_base_path, parser):
     """Handles image generation in normal mode."""
-    if args.prompt is None:
-        parser.error("The 'prompt' argument is required in normal mode. Use --help for more information.")
 
-    print(f"Generating {args.num_images} images for prompt: '{args.prompt}'", file=sys.stderr)
+    print(f"次のプロンプトによって生成される {args.num_images} 枚の画像: '{args.prompt}'")
     for _ in range(args.num_images):
         path = generate_and_save_image(
             pipe,
@@ -312,24 +310,38 @@ def run_normal_mode(pipe, args, output_base_path, parser):
             prefix_message="Normal mode"
         )
         if path:
-            print(f"Generated image: {path}", file=sys.stderr)
+            print(f"生成画像: {path}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate an image using Stable Diffusion.")
+    parser = argparse.ArgumentParser(description="Stable Diffusion XL を使用して画像を生成します。")
+    for action in parser._actions:
+        if isinstance(action, argparse._HelpAction):
+            action.help = "このヘルプメッセージを表示してプログラムを終了します。"
+            break
+    parser.add_argument("--version", action="version", version="%(prog)s 0.1.0", help="プログラムのバージョン (0.1.0) を表示して終了します。")
     parser.add_argument("--mcp", action="store_true",
-            help="Enable Multi-Client Protocol mode. Prompts are read from stdin, output paths to stdout.")
+            help="Multi Client Protocol (MCP) モードを有効にします。")
     parser.add_argument("prompt", type=str, nargs='?',
-            help="Prompt for image generation (required in normal mode, read from stdin in MCP mode).")
+            help="画像生成のためのプロンプト (通常モードは必須、MCP モードでは標準入力から読み込み)")
     default_model = os.getenv("MODEL", DEFALUT_MODEL)
     parser.add_argument("--model-id", "-m", type=str, default=default_model,
-            help=f"Model ID for Stable Diffusion (default: {default_model}).")
+            help=f"Stable Diffusion のモデル ID")
     parser.add_argument("--negative-prompt", "-np", type=str, default=None,
-            help="Negative prompt for image generation (default: None).")
+            help="画像生成のためのネガティブプロンプト (オプション)")
     parser.add_argument("--output", "-o", type=str, default="images/output.png",
-            help="Output file name for the generated image (default: output.png).")
+            help="生成された画像の出力ファイル名 (デフォルト: output.png)")
     parser.add_argument("--num-images", "-n", type=int, default=1,
-            help="Number of images to generate (default: 1, ignored in MCP mode per prompt).")
+            help="生成する画像の数 (デフォルト: 1、通常モードのみ)")
     args = parser.parse_args()
+
+    # model_idが指定されているか確認
+    if not args.model_id:
+        print("❌  モデル ID (--model-id オプションまたは MODEL 環境変数) が指定されていません。", file=sys.stderr)
+        sys.exit(1)
+
+    if args.prompt is None and not args.mcp:
+        print("❌  通常モードでは prompt 引数が必要です。詳細については --help を使用してください。", file=sys.stderr)
+        sys.exit(1)
 
     # 出力ファイルの準備（ユニーク化はループ内で行う）
     output_base_path = args.output
@@ -344,7 +356,8 @@ def main():
         pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device, mode="mcp")
         run_mcp_mode(pipe, args, output_base_path)
     else:
-        print(f"Loading model {model_id} to {device}...", file=sys.stderr)
+        print(f"{device} を使用します")
+        print(f"{model_id} を読み込んでいます...")
         pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
         run_normal_mode(pipe, args, output_base_path, parser)
     

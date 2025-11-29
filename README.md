@@ -125,3 +125,8 @@ uv run --directory ~/genimage python -m main --mcp
 ```json
 {"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"kimono, open-mouth, bob-cut, black-hair, green-eyes","output_path":"output.png"}}}
 ```
+
+> ツール実行 (ネガティブプロンプトあり)
+```json
+{"jsonrpc":"2.0","id":"3","method":"tools/call","params":{"name":"generate_image","arguments":{"prompt":"open-mouth, bob-cut, black-hair, green-eyes","negative_prompt":"ears","output_path":"output.png"}}}
+```

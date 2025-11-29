@@ -19,6 +19,9 @@ dependencies = [
     "transformers>=4.57.1",
 ]
 
+[tool.uv]
+package = true
+
 [tool.uv.sources]
 torch = { index = "torch-cuda" }
 torchaudio = { index = "torch-cuda" }
@@ -28,3 +31,9 @@ torchvision = { index = "torch-cuda" }
 name = "torch-cuda"
 url = "https://download.pytorch.org/whl/cu124"
 explicit = true
+
+[project.scripts]
+genimage = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
