@@ -14,6 +14,8 @@ from diffusers.utils import logging
 import io
 import json
 
+from transformers import CLIPTextModel
+
 
 DEFALUT_MODEL = ""
 
@@ -217,21 +219,22 @@ def unique_path(path):
 
 def load_pipeline(model_id, device="cuda", mode="default"):
     # Set torch_dtype conditionally based on the device
+    dtype_args = {
+        "use_safetensors": True,
+        "torch_dtype": torch.float16
+    }
+
     if device == "cpu":
-        # Explicitly use torch.float32 for CPU to avoid float16 compatibility issues
-        dtype_args = {"torch_dtype": torch.float32}
-    else:
-        # Use torch.float16 for non-CPU devices (e.g., GPU) for performance
-        dtype_args = {"torch_dtype": torch.float16}
+        dtype_args["torch_dtype"] = torch.float32
 
     if os.path.exists(model_id):
         if os.path.isfile(model_id):
             old_stderr = sys.stderr
             if mode == "mcp":
                 sys.stderr = io.StringIO()
+            
             pipe = StableDiffusionXLPipeline.from_single_file(
                 model_id,
-                use_safetensors=True,
                 **dtype_args
             )
             if mode == "mcp":
@@ -240,14 +243,12 @@ def load_pipeline(model_id, device="cuda", mode="default"):
         else:
             pipe = StableDiffusionXLPipeline.from_pretrained(
                 model_id,
-                use_safetensors=True,
                 **dtype_args
             )
             pipe.to(device)
     else:
         pipe = StableDiffusionXLPipeline.from_pretrained(
             model_id,
-            use_safetensors=True,
             **dtype_args
         )
         pipe.to(device)
