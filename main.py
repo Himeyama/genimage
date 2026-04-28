@@ -1,6 +1,6 @@
 import base64
 import sys
-from diffusers import StableDiffusionXLPipeline
+from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
 import torch
 import argparse
 from dotenv import load_dotenv
@@ -22,6 +22,7 @@ DEFALUT_MODEL = ""
 load_dotenv()
 server = Server("image-generator-server")
 pipe = None
+img2img_pipe = None
 default_negative_prompt = None
 output_base_path = None
 
@@ -47,8 +48,46 @@ async def handle_list_tools() -> list[Tool]:
                         "type": "string",
                         "description": "出力ベースパス（オプション）",
                     },
+                    "steps": {
+                        "type": "integer",
+                        "description": "推論ステップ数（デフォルト: 40）",
+                    },
                 },
                 "required": ["prompt"],
+            },
+        ),
+        Tool(
+            name="image2image",
+            description="入力画像をプロンプトに基づいて変換します（image-to-image）",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "画像変換用のプロンプトテキスト",
+                    },
+                    "image_path": {
+                        "type": "string",
+                        "description": "変換元の画像パス（Base64またはファイルパス）",
+                    },
+                    "negative_prompt": {
+                        "type": "string",
+                        "description": "ネガティブプロンプト（オプション）",
+                    },
+                    "strength": {
+                        "type": "number",
+                        "description": "変換強度 (0.0-1.0)。値が大きいほど元の画像から変化します（デフォルト: 0.2）",
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "description": "出力ベースパス（オプション）",
+                    },
+                    "steps": {
+                        "type": "integer",
+                        "description": "推論ステップ数（デフォルト: 40）",
+                    },
+                },
+                "required": ["prompt", "image_path"],
             },
         ),
     ]
@@ -57,21 +96,28 @@ async def handle_list_tools() -> list[Tool]:
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     """ツールを実行して結果を返す"""
-    if name != "generate_image":
+    if name == "generate_image":
+        return await handle_generate_image(name, arguments)
+    elif name == "image2image":
+        return await handle_image2image(name, arguments)
+    else:
         raise ValueError(f"Unknown tool: {name}")
-    
+
+async def handle_generate_image(name: str, arguments: dict) -> list[TextContent]:
+    """generate_imageツールを実行して結果を返す"""
     # パラメータの取得
     prompt = arguments.get("prompt", "").strip()
     negative_prompt = arguments.get("negative_prompt", default_negative_prompt)
-    
+    steps = arguments.get("steps", 40)
+
     # 空のプロンプトチェック
     if not prompt:
         return [TextContent(
             type="text",
             text="エラー: プロンプトが空です"
         )]
-    
-    try:        
+
+    try:
         client_provided_output_path = arguments.get("output_path")
 
         if client_provided_output_path:
@@ -82,9 +128,10 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 negative_prompt,
                 output_base_path=client_provided_output_path,
                 prefix_message="MCP",
-                output="path"
+                output="path",
+                num_inference_steps=steps,
             )
-            
+
             if image_path:
                 return [
                     TextContent(
@@ -111,9 +158,10 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 pipe,
                 prompt,
                 negative_prompt,
-                output_base_path=output_base_path, # Base64出力の場合でも、内部処理で利用される可能性があるためデフォルトパスを渡す
+                output_base_path=output_base_path,
                 prefix_message="MCP",
-                output="base64"
+                output="base64",
+                num_inference_steps=steps,
             )
             
             if base64_image:
@@ -142,6 +190,118 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
         return [TextContent(
             type="text",
             text=error_msg
+        )]
+
+async def handle_image2image(name: str, arguments: dict) -> list[TextContent]:
+    """image2imageツールを実行して結果を返す"""
+    from PIL import Image
+    import base64
+    
+    # パラメータの取得
+    prompt = arguments.get("prompt", "").strip()
+    image_path = arguments.get("image_path", "").strip()
+    negative_prompt = arguments.get("negative_prompt", default_negative_prompt)
+    strength = arguments.get("strength", 0.1)
+    steps = arguments.get("steps", 40)
+    client_provided_output_path = arguments.get("output_path")
+    
+    # パラメータチェック
+    if not prompt:
+        return [TextContent(
+            type="text",
+            text="エラー: プロンプトが空です"
+        )]
+    
+    if not image_path:
+        return [TextContent(
+            type="text",
+            text="エラー: 画像パスが空です"
+        )]
+    
+    # 画像を読み込み（Base64またはファイルパス）
+    try:
+        if image_path.startswith("data:image") or "," in image_path:
+            # Base64画像の場合
+            if "," in image_path:
+                base64_data = image_path.split(",", 1)[1]
+            else:
+                base64_data = image_path
+            img_bytes = base64.b64decode(base64_data)
+            input_image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        else:
+            # ファイルパスの場合
+            input_image = Image.open(image_path).convert("RGB")
+    except Exception as e:
+        return [TextContent(
+            type="text",
+            text=json.dumps({
+                "success": False,
+                "message": f"画像の読み込みに失敗しました: {str(e)}",
+            })
+        )]
+    
+    try:
+        # image2imgパイプラインが初期化されていない場合は初期化
+        global img2img_pipe
+        if img2img_pipe is None and pipe is not None:
+            img2img_pipe = StableDiffusionXLImg2ImgPipeline.from_pipe(pipe)
+            img2img_pipe.to(pipe.device)
+        
+        if img2img_pipe is None:
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": False,
+                    "message": "img2imgパイプラインが初期化されていません",
+                })
+            )]
+        
+        # プログレスバーを無効化
+        img2img_pipe.set_progress_bar_config(disable=True)
+        
+        # 画像変換
+        result = img2img_pipe(
+            prompt=prompt,
+            image=input_image,
+            negative_prompt=negative_prompt,
+            strength=strength,
+            num_inference_steps=steps,
+        )
+
+        output_image = result.images[0]
+
+        if client_provided_output_path:
+            # クライアントが出力パスを指定した場合、そのパスに画像を保存
+            output_path = unique_path(client_provided_output_path)
+            output_image.save(output_path)
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "output": output_path,
+                })
+            )]
+        else:
+            # Base64で返す
+            buffered = io.BytesIO()
+            output_image.save(buffered, format="PNG")
+            img_bytes = buffered.getvalue()
+            base64_image = base64.b64encode(img_bytes).decode('utf-8')
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    "success": True,
+                    "output": base64_image,
+                })
+            )]
+    
+    except Exception as e:
+        return [TextContent(
+            type="text",
+            text=json.dumps({
+                "success": False,
+                "message": f"image2image中にエラーが発生しました: {str(e)}",
+            })
         )]
 
 def set_server_config(diffusion_pipe, neg_prompt: str, output_path: str):
@@ -254,29 +414,28 @@ def load_pipeline(model_id, device="cuda", mode="default"):
         pipe.to(device)
     return pipe
 
-def save_images(pipe, prompt, negative_prompt, output_path, num_images=1):
+def save_images(pipe, prompt, negative_prompt, output_path, num_images=1, num_inference_steps=40):
     dir_name = ensure_dir(output_path)
     base = os.path.basename(output_path)
     root, ext = os.path.splitext(base)
 
     saved_paths = []
-    # 既に output_path はユニークなので最初はそれを使う
-    first_path = unique_path(output_path) # Corrected typo _unique_path to unique_path
+    first_path = unique_path(output_path)
     for idx in range(num_images):
-        out_path = first_path if idx == 0 else unique_path(os.path.join(dir_name, f"{root} ({idx}){ext}")) # Corrected typo
-        result = pipe(prompt, negative_prompt=negative_prompt)
+        out_path = first_path if idx == 0 else unique_path(os.path.join(dir_name, f"{root} ({idx}){ext}"))
+        result = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps)
         image = result.images[0]
         image.save(out_path)
         saved_paths.append(out_path)
     return saved_paths
 
-def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="images/output.png", prefix_message="", output="path"):
+def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="images/output.png", prefix_message="", output="path", num_inference_steps=20):
     """Generates a single image and saves it to a unique path."""
     if prefix_message == "MCP":
         pipe.set_progress_bar_config(disable=True)
 
     try:
-        result = pipe(prompt, negative_prompt=negative_prompt)
+        result = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps)
         for image in result.images:
             path = output_base_path
             if output_base_path:
@@ -298,17 +457,60 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="ima
         print(f"{prefix_message} Error generating image for prompt '{prompt}': {e}", file=sys.stderr)
     return None
 
+def run_img2img_mode(pipe, args, output_base_path):
+    """Handles image2image in normal mode."""
+    from PIL import Image
+    
+    if not args.input_image:
+        print("❌  image2image モードでは --input-image オプションが必要です。", file=sys.stderr)
+        sys.exit(1)
+    
+    # 入力画像を読み込み
+    try:
+        input_image = Image.open(args.input_image).convert("RGB")
+    except Exception as e:
+        print(f"❌  入力画像の読み込みに失敗しました: {e}", file=sys.stderr)
+        sys.exit(1)
+    
+    # img2imgパイプラインを初期化
+    print(f"{pipe.device} を使用します")
+    print("img2img パイプラインを読み込んでいます...")
+    img2img_pipe = StableDiffusionXLImg2ImgPipeline.from_pipe(pipe)
+    img2img_pipe.to(pipe.device)
+    
+    print(f"次のプロンプトで画像を変換: '{args.prompt}'")
+    print(f"入力画像: {args.input_image}")
+    print(f"変換強度: {args.strength}")
+    print(f"推論ステップ数: {args.steps}")
+
+    # 画像変換
+    result = img2img_pipe(
+        prompt=args.prompt,
+        image=input_image,
+        negative_prompt=args.negative_prompt,
+        strength=args.strength,
+        num_inference_steps=args.steps,
+    )
+    
+    output_image = result.images[0]
+    path = unique_path(output_base_path)
+    output_image.save(path)
+    print(f"変換画像: {path}")
+    return path
+
 def run_normal_mode(pipe, args, output_base_path, parser):
     """Handles image generation in normal mode."""
 
     print(f"次のプロンプトによって生成される {args.num_images} 枚の画像: '{args.prompt}'")
+    print(f"推論ステップ数: {args.steps}")
     for _ in range(args.num_images):
         path = generate_and_save_image(
             pipe,
             args.prompt,
             args.negative_prompt,
             output=output_base_path,
-            prefix_message="Normal mode"
+            prefix_message="Normal mode",
+            num_inference_steps=args.steps,
         )
         if path:
             print(f"生成画像: {path}")
@@ -322,6 +524,12 @@ def main():
     parser.add_argument("--version", action="version", version="%(prog)s 0.1.0", help="プログラムのバージョン (0.1.0) を表示して終了します。")
     parser.add_argument("--mcp", action="store_true",
             help="Multi Client Protocol (MCP) モードを有効にします。")
+    parser.add_argument("--img2img", action="store_true",
+            help="image2image モードを有効にします。入力画像をプロンプトに基づいて変換します。")
+    parser.add_argument("--input-image", "-i", type=str, default=None,
+            help="image2image の入力画像パス (image2image モード必須)")
+    parser.add_argument("--strength", "-s", type=float, default=0.1,
+            help="image2image の変換強度 0.0-1.0 (デフォルト: 0.1)")
     parser.add_argument("prompt", type=str, nargs='?',
             help="画像生成のためのプロンプト (通常モードは必須、MCP モードでは標準入力から読み込み)")
     default_model = os.getenv("MODEL", DEFALUT_MODEL)
@@ -333,6 +541,8 @@ def main():
             help="生成された画像の出力ファイル名 (デフォルト: output.png)")
     parser.add_argument("--num-images", "-n", type=int, default=1,
             help="生成する画像の数 (デフォルト: 1、通常モードのみ)")
+    parser.add_argument("--steps", type=int, default=40,
+            help="推論ステップ数 (デフォルト: 40)")
     args = parser.parse_args()
 
     # model_idが指定されているか確認
@@ -356,6 +566,11 @@ def main():
         logging.disable_progress_bar()
         pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device, mode="mcp")
         run_mcp_mode(pipe, args, output_base_path)
+    elif args.img2img:
+        print(f"{device} を使用します")
+        print(f"{model_id} を読み込んでいます...")
+        pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
+        run_img2img_mode(pipe, args, output_base_path)
     else:
         print(f"{device} を使用します")
         print(f"{model_id} を読み込んでいます...")
