@@ -14,8 +14,6 @@ from diffusers.utils import logging
 import io
 import json
 
-from transformers import CLIPTextModel
-
 
 DEFALUT_MODEL = ""
 
@@ -460,11 +458,7 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="ima
 def run_img2img_mode(pipe, args, output_base_path):
     """Handles image2image in normal mode."""
     from PIL import Image
-    
-    if not args.input_image:
-        print("❌  image2image モードでは --input-image オプションが必要です。", file=sys.stderr)
-        sys.exit(1)
-    
+
     # 入力画像を読み込み
     try:
         input_image = Image.open(args.input_image).convert("RGB")
@@ -545,13 +539,21 @@ def main():
             help="推論ステップ数 (デフォルト: 40)")
     args = parser.parse_args()
 
-    # model_idが指定されているか確認
+    # モデルロード前に全引数を検証
     if not args.model_id:
         print("❌  モデル ID (--model-id オプションまたは MODEL 環境変数) が指定されていません。", file=sys.stderr)
         sys.exit(1)
 
     if args.prompt is None and not args.mcp:
         print("❌  通常モードでは prompt 引数が必要です。詳細については --help を使用してください。", file=sys.stderr)
+        sys.exit(1)
+
+    if args.img2img and not args.input_image:
+        print("❌  image2image モードでは --input-image オプションが必要です。", file=sys.stderr)
+        sys.exit(1)
+
+    if args.img2img and args.input_image and not os.path.exists(args.input_image):
+        print(f"❌  入力画像ファイルが見つかりません: {args.input_image}", file=sys.stderr)
         sys.exit(1)
 
     # 出力ファイルの準備（ユニーク化はループ内で行う）
