@@ -220,6 +220,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             const cwd = getServerCwd(this._context);
             const defaultOutputPath = vscode.Uri.joinPath(vscode.Uri.file(cwd), 'images', `vscode-output-${Date.now()}.png`).fsPath;
 
+            const startTime = performance.now();
             let result: any;
             if (data.mode === 'txt2img') {
                 result = (await client.callTool({
@@ -230,7 +231,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                         steps: data.steps,
                         output_path: defaultOutputPath
                     }
-                })) as any;
+                }, undefined, { timeout: 300000 })) as any;
             } else if (data.mode === 'img2img') {
                 result = (await client.callTool({
                     name: 'image2image',
@@ -242,8 +243,10 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                         steps: data.steps,
                         output_path: defaultOutputPath
                     }
-                })) as any;
+                }, undefined, { timeout: 300000 })) as any;
             }
+            const endTime = performance.now();
+            const elapsedTime = ((endTime - startTime) / 1000).toFixed(1);
 
             if (result && result.content && result.content.length > 0) {
                 const content = result.content[0] as any;
@@ -262,7 +265,8 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                             msgId: msgId,
                             success: true, 
                             url: previewUrl,
-                            localPath: parsed.output
+                            localPath: parsed.output,
+                            elapsedTime: elapsedTime
                         });
                     } else {
                         this._view.webview.postMessage({ command: 'result', msgId: msgId, success: false, error: parsed.message });
@@ -650,15 +654,16 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             return msgId;
         }
 
-        function updateAssistantMessage(msgId, success, urlOrError, localPath) {
+        function updateAssistantMessage(msgId, success, urlOrError, localPath, elapsedTime) {
             const msgDiv = document.getElementById(msgId);
             if (!msgDiv) return;
 
             const bubble = msgDiv.querySelector('.chat-bubble');
             if (success) {
+                let timeText = elapsedTime ? \` | 実行時間: \${elapsedTime}秒\` : '';
                 bubble.innerHTML = \`
                     <img src="\${urlOrError}" class="generated-image" style="display: block;" title="\${localPath} (クリックで開く)" onclick="window.open('\${urlOrError}')" />
-                    <div style="font-size: 10px; color: var(--vscode-descriptionForeground); margin-top: 4px;">保存先: \${localPath.split(/\\\\|\\//).pop()}</div>
+                    <div style="font-size: 10px; color: var(--vscode-descriptionForeground); margin-top: 4px;">保存先: \${localPath.split(/\\\\|\\//).pop()}\${timeText}</div>
                 \`;
             } else {
                 bubble.innerHTML = \`<div class="error-text">エラー: \${urlOrError}</div>\`;
@@ -756,7 +761,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                 case 'result':
                     generateBtn.disabled = false;
                     if (message.msgId) {
-                        updateAssistantMessage(message.msgId, message.success, message.success ? message.url : message.error, message.localPath);
+                        updateAssistantMessage(message.msgId, message.success, message.success ? message.url : message.error, message.localPath, message.elapsedTime);
                     }
                     break;
             }

@@ -71,7 +71,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "vsix": "npx @vscode/vsce package"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.1"
