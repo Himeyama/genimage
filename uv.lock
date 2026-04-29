@@ -268,6 +268,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "diffusers" },
     { name = "huggingface-hub" },
+    { name = "loguru" },
     { name = "mcp" },
     { name = "pillow" },
     { name = "python-dotenv" },
@@ -284,6 +285,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.12.0" },
     { name = "diffusers", specifier = ">=0.35.2" },
     { name = "huggingface-hub", specifier = ">=0.36.0" },
+    { name = "loguru", specifier = ">=0.7.3" },
     { name = "mcp", specifier = ">=1.22.0" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
@@ -447,6 +449,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/19/74/a633ee74eb36c44aa6d1095e7cc5569bebf04342ee146178e2d36600708b/jsonschema_specifications-2025.9.1.tar.gz", hash = "sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d", size = 32855, upload-time = "2025-09-08T01:34:59.186Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8cedb3c1902296743db0bbc66608a0db2814f/jsonschema_specifications-2025.9.1-py3-none-any.whl", hash = "sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe", size = 18437, upload-time = "2025-09-08T01:34:57.871Z" },
+]
+
+[[package]]
+name = "loguru"
+version = "0.7.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "win32-setctime", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/05/a1dae3dffd1116099471c643b8924f5aa6524411dc6c63fdae648c4f1aca/loguru-0.7.3.tar.gz", hash = "sha256:19480589e77d47b8d85b2c827ad95d49bf31b0dcde16593892eb51dd18706eb6", size = 63559, upload-time = "2024-12-06T11:20:56.608Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl", hash = "sha256:31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c", size = 61595, upload-time = "2024-12-06T11:20:54.538Z" },
 ]
 
 [[package]]
@@ -1290,9 +1305,9 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://download.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp313-cp313-linux_x86_64.whl", hash = "sha256:0f3bc53c988ce9568cd876a2a5316761e84a8704135ec8068f5f81b4417979cb" },
-    { url = "https://download.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp313-cp313-win_amd64.whl", hash = "sha256:519330eef09534acad8110b6f423d2fe58c1d8e9ada999ed077a637a0021f908" },
-    { url = "https://download.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp313-cp313t-linux_x86_64.whl", hash = "sha256:35cba404c0d742406cdcba1609085874bc60facdfbc50e910c47a92405fef44c" },
+    { url = "https://download-r2.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp313-cp313-linux_x86_64.whl", hash = "sha256:0f3bc53c988ce9568cd876a2a5316761e84a8704135ec8068f5f81b4417979cb", upload-time = "2025-01-30T00:59:14Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp313-cp313-win_amd64.whl", hash = "sha256:519330eef09534acad8110b6f423d2fe58c1d8e9ada999ed077a637a0021f908", upload-time = "2025-01-30T00:59:45Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu124/torch-2.6.0%2Bcu124-cp313-cp313t-linux_x86_64.whl", hash = "sha256:35cba404c0d742406cdcba1609085874bc60facdfbc50e910c47a92405fef44c", upload-time = "2025-01-30T01:01:25Z" },
 ]
 
 [[package]]
@@ -1303,8 +1318,8 @@ dependencies = [
     { name = "torch" },
 ]
 wheels = [
-    { url = "https://download.pytorch.org/whl/cu124/torchaudio-2.6.0%2Bcu124-cp313-cp313-linux_x86_64.whl", hash = "sha256:1bc23963f447c910a0060b130b04b407d2ea218b2a553e674c829d5f17eb8c8e" },
-    { url = "https://download.pytorch.org/whl/cu124/torchaudio-2.6.0%2Bcu124-cp313-cp313-win_amd64.whl", hash = "sha256:231eddbfd8bafd06b2c9f55cd6f33e61f58b25b19f2d51382a95e8f12887689f" },
+    { url = "https://download-r2.pytorch.org/whl/cu124/torchaudio-2.6.0%2Bcu124-cp313-cp313-linux_x86_64.whl", hash = "sha256:1bc23963f447c910a0060b130b04b407d2ea218b2a553e674c829d5f17eb8c8e", upload-time = "2025-01-30T01:04:25Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu124/torchaudio-2.6.0%2Bcu124-cp313-cp313-win_amd64.whl", hash = "sha256:231eddbfd8bafd06b2c9f55cd6f33e61f58b25b19f2d51382a95e8f12887689f", upload-time = "2025-01-30T01:04:26Z" },
 ]
 
 [[package]]
@@ -1317,8 +1332,8 @@ dependencies = [
     { name = "torch" },
 ]
 wheels = [
-    { url = "https://download.pytorch.org/whl/cu124/torchvision-0.21.0%2Bcu124-cp313-cp313-linux_x86_64.whl", hash = "sha256:4b70acf3b4b96a0ceb1374116626c9bef9e8be016b57b1284e482260ca1896d6" },
-    { url = "https://download.pytorch.org/whl/cu124/torchvision-0.21.0%2Bcu124-cp313-cp313-win_amd64.whl", hash = "sha256:8fcf55321b206de70ff8e01c884fa42e57a60b1cb749341b96e0f22c8a7c9ec7" },
+    { url = "https://download-r2.pytorch.org/whl/cu124/torchvision-0.21.0%2Bcu124-cp313-cp313-linux_x86_64.whl", hash = "sha256:4b70acf3b4b96a0ceb1374116626c9bef9e8be016b57b1284e482260ca1896d6", upload-time = "2025-01-30T01:04:30Z" },
+    { url = "https://download-r2.pytorch.org/whl/cu124/torchvision-0.21.0%2Bcu124-cp313-cp313-win_amd64.whl", hash = "sha256:8fcf55321b206de70ff8e01c884fa42e57a60b1cb749341b96e0f22c8a7c9ec7", upload-time = "2025-01-30T01:04:31Z" },
 ]
 
 [[package]]
@@ -1403,6 +1418,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cb/ce/f06b84e2697fef4688ca63bdb2fdf113ca0a3be33f94488f2cadb690b0cf/uvicorn-0.38.0.tar.gz", hash = "sha256:fd97093bdd120a2609fc0d3afe931d4d4ad688b6e75f0f929fde1bc36fe0e91d", size = 80605, upload-time = "2025-10-18T13:46:44.63Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/d9/d88e73ca598f4f6ff671fb5fde8a32925c2e08a637303a1d12883c7305fa/uvicorn-0.38.0-py3-none-any.whl", hash = "sha256:48c0afd214ceb59340075b4a052ea1ee91c16fbc2a9b1469cca0e54566977b02", size = 68109, upload-time = "2025-10-18T13:46:42.958Z" },
+]
+
+[[package]]
+name = "win32-setctime"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/705086c9d734d3b663af0e9bb3d4de6578d08f46b1b101c2442fd9aecaa2/win32_setctime-1.2.0.tar.gz", hash = "sha256:ae1fdf948f5640aae05c511ade119313fb6a30d7eabe25fef9764dca5873c4c0", size = 4867, upload-time = "2024-12-07T15:28:28.314Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/07/c6fe3ad3e685340704d314d765b7912993bcb8dc198f0e7a89382d37974b/win32_setctime-1.2.0-py3-none-any.whl", hash = "sha256:95d644c4e708aba81dc3704a116d8cbc974d70b3bdb8be1d150e36be6e9d1390", size = 4083, upload-time = "2024-12-07T15:28:26.465Z" },
 ]
 
 [[package]]
