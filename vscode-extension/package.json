@@ -1,0 +1,84 @@
+{
+  "name": "genimage-vscode",
+  "displayName": "GenImage",
+  "description": "GUI wrapper for genimage using MCP",
+  "version": "0.1.0",
+  "publisher": "hikari",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "main": "./out/extension.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hikari/genimage-vscode"
+  },
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "genimage-container",
+          "title": "GenImage",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "genimage-container": [
+        {
+          "type": "webview",
+          "id": "genimage.sidebar",
+          "name": "GenImage Studio"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "genimage.focusSidebar",
+        "title": "GenImage: Focus Sidebar"
+      }
+    ],
+    "configuration": {
+      "title": "GenImage",
+      "properties": {
+        "genimage.mcpServerPath": {
+          "type": "string",
+          "default": "uv",
+          "description": "Path to the MCP server executable (e.g. 'uv', 'python', 'C:\\path\\to\\server.exe')"
+        },
+        "genimage.mcpServerArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["run", "main.py", "--mcp"],
+          "description": "Arguments to pass to the MCP server executable"
+        },
+        "genimage.mcpServerCwd": {
+          "type": "string",
+          "default": "${workspaceFolder}",
+          "description": "Working directory for the MCP server"
+        },
+        "genimage.modelPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the AI model (e.g., C:\\models\\my_model.safetensors). If specified, overrides the default."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}

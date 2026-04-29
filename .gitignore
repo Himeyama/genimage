@@ -12,3 +12,9 @@ wheels/
 .env
 images/
 models/
+
+node_modules/
+out/
+*.vsix
+
+.vscode/
