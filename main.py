@@ -19,6 +19,42 @@ logger.add(
     level="DEBUG",
 )
 
+import tqdm as _tqdm_lib
+
+class _TqdmToLogger:
+    """tqdm の出力を loguru INFO にリダイレクト（\r 上書き更新はフィルタ）"""
+    def __init__(self):
+        self._buf = ""
+
+    def write(self, s):
+        self._buf += s
+        while '\n' in self._buf:
+            line, self._buf = self._buf.split('\n', 1)
+            line = line.split('\r')[-1].strip()
+            if line:
+                logger.info(line)
+
+    def flush(self):
+        pass
+
+    def isatty(self):
+        return False
+
+_tqdm_out = _TqdmToLogger()
+_OrigTqdm = _tqdm_lib.tqdm
+
+class _LoguruTqdm(_OrigTqdm):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('file', _tqdm_out)
+        super().__init__(*args, **kwargs)
+
+_tqdm_lib.tqdm = _LoguruTqdm
+try:
+    import tqdm.auto as _tqdm_auto_lib
+    _tqdm_auto_lib.tqdm = _LoguruTqdm
+except ImportError:
+    pass
+
 DEFALUT_MODEL = ""
 
 load_dotenv()
