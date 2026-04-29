@@ -142,11 +142,13 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
     ) {
         this._view = webviewView;
 
+        const cwdUri = vscode.Uri.file(getServerCwd(this._context));
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        const localResourceRoots = [cwdUri, ...workspaceFolders.map(f => f.uri)];
+
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [
-                vscode.Uri.file(getServerCwd(this._context))
-            ]
+            localResourceRoots: localResourceRoots
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -158,7 +160,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
                 case 'generate':
-                    await this._handleGenerate(message.data);
+                    await this._handleGenerate(message.data, message.msgId);
                     return;
                 case 'pickImage':
                     const uri = await vscode.window.showOpenDialog({
@@ -206,17 +208,17 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private async _handleGenerate(data: any) {
+    private async _handleGenerate(data: any, msgId: string) {
         if (!this._view) return;
         
-        this._view.webview.postMessage({ command: 'status', text: 'MCPサーバーに接続中...' });
+        this._view.webview.postMessage({ command: 'status', msgId: msgId, text: 'MCPサーバーに接続中...' });
 
         try {
             const client = await initClient(this._context);
-            this._view.webview.postMessage({ command: 'status', text: '画像生成中...' });
+            this._view.webview.postMessage({ command: 'status', msgId: msgId, text: '画像生成中...' });
 
             const cwd = getServerCwd(this._context);
-            const defaultOutputPath = vscode.Uri.joinPath(vscode.Uri.file(cwd), 'images', 'vscode-output.png').fsPath;
+            const defaultOutputPath = vscode.Uri.joinPath(vscode.Uri.file(cwd), 'images', `vscode-output-${Date.now()}.png`).fsPath;
 
             let result: any;
             if (data.mode === 'txt2img') {
@@ -251,32 +253,38 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                         const fileUri = vscode.Uri.file(parsed.output);
                         const webviewUri = this._view.webview.asWebviewUri(fileUri);
                         
+                        console.log("Resolved Image URI for Webview:", webviewUri.toString());
+                        
                         const previewUrl = webviewUri.toString() + '?t=' + Date.now();
                         
                         this._view.webview.postMessage({ 
                             command: 'result', 
+                            msgId: msgId,
                             success: true, 
                             url: previewUrl,
                             localPath: parsed.output
                         });
                     } else {
-                        this._view.webview.postMessage({ command: 'result', success: false, error: parsed.message });
+                        this._view.webview.postMessage({ command: 'result', msgId: msgId, success: false, error: parsed.message });
                     }
                 }
             } else {
-                this._view.webview.postMessage({ command: 'result', success: false, error: 'サーバーから不正なレスポンスが返されました。' });
+                this._view.webview.postMessage({ command: 'result', msgId: msgId, success: false, error: 'サーバーから不正なレスポンスが返されました。' });
             }
         } catch (error: any) {
-            this._view.webview.postMessage({ command: 'result', success: false, error: error.message });
+            this._view.webview.postMessage({ command: 'result', msgId: msgId, success: false, error: error.message });
         }
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
+        // CSPで webview のリソースURI (vscode-resource: など) を許可する
+        const cspSource = webview.cspSource;
         return `<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https:; script-src 'unsafe-inline'; style-src 'unsafe-inline';">
     <title>GenImage Studio</title>
     <style>
         body {
@@ -284,6 +292,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
             margin: 0;
+            padding: 0;
             display: flex;
             flex-direction: column;
             height: 100vh;
@@ -293,7 +302,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
 
         /* Top Settings Bar */
         .settings-bar {
-            padding: 10px;
+            padding: 10px 15px;
             background: var(--vscode-editorWidget-background);
             border-bottom: 1px solid var(--vscode-widget-border);
             display: flex;
@@ -385,8 +394,9 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             align-items: flex-end;
         }
         .chat-message.assistant {
-            align-self: flex-start;
-            align-items: flex-start;
+            align-self: center;
+            align-items: center;
+            width: 100%;
         }
 
         .chat-bubble {
@@ -401,9 +411,16 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             color: var(--vscode-button-foreground);
             border-bottom-right-radius: 0;
         }
+        
         .chat-message.assistant .chat-bubble {
             background-color: transparent;
             padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            text-align: center;
         }
         
         .chat-details {
@@ -419,6 +436,8 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
             cursor: pointer;
             transition: transform 0.2s;
+            display: block;
+            margin: 0 auto;
         }
         .generated-image:hover {
             transform: scale(1.02);
@@ -431,13 +450,13 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             width: 20px;
             height: 20px;
             animation: spin 1s linear infinite;
-            margin: 10px 0;
+            margin: 0 auto 10px auto;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         /* Bottom Input Area */
         .input-area {
-            padding: 10px;
+            padding: 10px 15px;
             background: var(--vscode-editorWidget-background);
             border-top: 1px solid var(--vscode-widget-border);
             display: flex;
@@ -449,6 +468,10 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         textarea {
             resize: vertical;
             min-height: 40px;
+        }
+        
+        .form-group-row label {
+            white-space: nowrap;
         }
         
         .btn-primary {
@@ -498,7 +521,6 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             <input type="text" id="modelPathUI" placeholder="HuggingFace ID / ローカルパス" style="flex: 1;" />
             <button type="button" id="pickModelBtn" class="btn-secondary" style="flex-shrink: 0;">参照</button>
         </div>
-        <div style="font-size: 10px; color: var(--vscode-descriptionForeground); margin-top: -5px;">（モデルの変更はサーバーの再起動後に反映されます）</div>
 
         <div class="form-group-row">
             <label style="flex-shrink: 0;">モード</label>
@@ -511,12 +533,6 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
 
     <!-- Middle Chat Area -->
     <div class="chat-area" id="chatArea">
-        <!-- 最初のメッセージ -->
-        <div class="chat-message assistant">
-            <div class="chat-bubble" style="color: var(--vscode-foreground);">
-                プロンプトを入力して「画像を生成」をクリックしてください。
-            </div>
-        </div>
     </div>
 
     <!-- Bottom Input Area -->
@@ -531,11 +547,11 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
 
         <div style="display: flex; gap: 10px; align-items: center;">
             <div class="form-group-row" style="flex: 1;">
-                <label>Steps</label>
+                <label>ステップ数</label>
                 <input type="number" id="steps" value="40" min="1" max="150" />
             </div>
             <div class="form-group-row img2img-only" style="flex: 1;">
-                <label>Strength</label>
+                <label>変換強度</label>
                 <input type="number" id="strength" value="0.1" step="0.05" min="0.01" max="1.0" />
             </div>
         </div>
@@ -598,9 +614,9 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'chat-message user';
             
-            let details = \`Steps: \${steps}\`;
+            let details = \`ステップ数: \${steps}\`;
             if (mode === 'img2img') {
-                details += \` | Strength: \${strength}\`;
+                details += \` | 変換強度: \${strength}\`;
             }
             if (negativePrompt) {
                 details += \`\\nNP: \${negativePrompt}\`;
@@ -641,7 +657,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             const bubble = msgDiv.querySelector('.chat-bubble');
             if (success) {
                 bubble.innerHTML = \`
-                    <img src="\${urlOrError}" class="generated-image" title="\${localPath} (クリックで開く)" onclick="window.open('\${urlOrError}')" />
+                    <img src="\${urlOrError}" class="generated-image" style="display: block;" title="\${localPath} (クリックで開く)" onclick="window.open('\${urlOrError}')" />
                     <div style="font-size: 10px; color: var(--vscode-descriptionForeground); margin-top: 4px;">保存先: \${localPath.split(/\\\\|\\//).pop()}</div>
                 \`;
             } else {
