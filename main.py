@@ -564,19 +564,41 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model_id = args.model_id
 
+    # ローカルパスと判断できる場合（絶対パス・相対パス・拡張子あり）は存在確認
+    is_local_path = (
+        os.path.isabs(model_id)
+        or model_id.startswith(("./", ".\\", "../", "..\\"))
+        or bool(os.path.splitext(model_id)[1])
+    )
+    if is_local_path and not os.path.exists(model_id):
+        print(f"❌  モデルが見つかりません: {model_id}", file=sys.stderr)
+        sys.exit(1)
+
     if args.mcp:
         logging.disable_progress_bar()
-        pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device, mode="mcp")
+        try:
+            pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device, mode="mcp")
+        except Exception as e:
+            print(f"❌  モデルの読み込みに失敗しました: {e}", file=sys.stderr)
+            sys.exit(1)
         run_mcp_mode(pipe, args, output_base_path)
     elif args.img2img:
         print(f"{device} を使用します")
         print(f"{model_id} を読み込んでいます...")
-        pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
+        try:
+            pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
+        except Exception as e:
+            print(f"❌  モデルの読み込みに失敗しました: {e}", file=sys.stderr)
+            sys.exit(1)
         run_img2img_mode(pipe, args, output_base_path)
     else:
         print(f"{device} を使用します")
         print(f"{model_id} を読み込んでいます...")
-        pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
+        try:
+            pipe: StableDiffusionXLPipeline = load_pipeline(model_id, device=device)
+        except Exception as e:
+            print(f"❌  モデルの読み込みに失敗しました: {e}", file=sys.stderr)
+            sys.exit(1)
         run_normal_mode(pipe, args, output_base_path, parser)
     
 if __name__ == "__main__":
