@@ -169,7 +169,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
                 case 'generate':
-                    await this._handleGenerate(message.data, message.msgId);
+                    await this._handleGenerate(message.data, message.msgId, message.modelPath);
                     return;
                 case 'pickImage':
                     const uri = await vscode.window.showOpenDialog({
@@ -217,13 +217,13 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private async _handleGenerate(data: any, msgId: string) {
+    private async _handleGenerate(data: any, msgId: string, modelPath?: string) {
         if (!this._view) return;
-        
+
         this._view.webview.postMessage({ command: 'status', msgId: msgId, text: 'MCPサーバーに接続中...' });
 
         try {
-            const client = await initClient(this._context);
+            const client = await initClient(this._context, modelPath);
             this._view.webview.postMessage({ command: 'status', msgId: msgId, text: '画像生成中...' });
 
             const cwd = getServerCwd(this._context);
@@ -753,7 +753,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             appendUserMessage(prompt, negativePrompt, steps, mode, data.strength, data.imagePath);
             activeMessageId = appendAssistantLoader();
 
-            vscode.postMessage({ command: 'generate', data, msgId: activeMessageId });
+            vscode.postMessage({ command: 'generate', data, msgId: activeMessageId, modelPath: modelPathUI.value.trim() });
         });
 
         window.addEventListener('message', event => {
