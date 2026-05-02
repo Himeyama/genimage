@@ -6,6 +6,8 @@ import os
 import asyncio
 import io
 import json
+import signal
+import atexit
 from loguru import logger
 
 # loguru をシンプルなフォーマット・stderr 出力に設定
@@ -66,6 +68,31 @@ default_negative_prompt = None
 output_base_path = None
 
 
+def _cleanup_gpu():
+    """GPU メモリを解放する（atexit / SIGTERM ハンドラから呼ばれる）"""
+    global pipe, img2img_pipe
+    if pipe is None and img2img_pipe is None:
+        return
+    logger.info("GPU メモリを解放しています...")
+    try:
+        import torch
+        if img2img_pipe is not None:
+            del img2img_pipe
+            img2img_pipe = None
+        if pipe is not None:
+            del pipe
+            pipe = None
+        torch.cuda.empty_cache()
+        logger.info("GPU メモリを解放しました")
+    except Exception as e:
+        logger.warning(f"GPU メモリ解放中にエラー: {e}")
+
+
+def _sigterm_handler(signum, frame):
+    _cleanup_gpu()
+    sys.exit(0)
+
+
 async def handle_generate_image(name: str, arguments: dict):
     """generate_image ツールを実行して結果を返す"""
     from mcp.types import TextContent
@@ -110,7 +137,10 @@ async def handle_generate_image(name: str, arguments: dict):
                 }))]
 
     except Exception as e:
-        return [TextContent(type="text", text=f"画像生成中にエラーが発生しました: {str(e)}")]
+        return [TextContent(type="text", text=json.dumps({
+            "success": False,
+            "message": f"画像生成中にエラーが発生しました: {str(e)}",
+        }))]
 
 
 async def handle_image2image(name: str, arguments: dict):
@@ -267,6 +297,11 @@ async def run_mcp_server():
 def run_mcp_mode(diffusion_pipe, args, base_output_path):
     """MCP モードでサーバーを起動"""
     set_server_config(diffusion_pipe, args.negative_prompt, base_output_path)
+    atexit.register(_cleanup_gpu)
+    try:
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+    except (OSError, ValueError):
+        pass  # Windows では SIGTERM ハンドラが設定できない場合がある
     try:
         asyncio.run(run_mcp_server())
     except KeyboardInterrupt:
@@ -363,7 +398,7 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="ima
             return path
     except Exception as e:
         logger.error(f"{prefix_message} Error generating image for prompt '{prompt}': {e}")
-    return None
+        raise
 
 
 def run_img2img_mode(pipe, args, output_base_path):
@@ -407,16 +442,19 @@ def run_normal_mode(pipe, args, output_base_path, parser):
     logger.info(f"次のプロンプトによって生成される {args.num_images} 枚の画像: '{args.prompt}'")
     logger.info(f"推論ステップ数: {args.steps}")
     for _ in range(args.num_images):
-        path = generate_and_save_image(
-            pipe,
-            args.prompt,
-            args.negative_prompt,
-            output=output_base_path,
-            prefix_message="Normal mode",
-            num_inference_steps=args.steps,
-        )
-        if path:
-            logger.success(f"生成画像: {path}")
+        try:
+            path = generate_and_save_image(
+                pipe,
+                args.prompt,
+                args.negative_prompt,
+                output_base_path=output_base_path,
+                prefix_message="Normal mode",
+                num_inference_steps=args.steps,
+            )
+            if path:
+                logger.success(f"生成画像: {path}")
+        except Exception as e:
+            logger.error(f"画像生成に失敗しました: {e}")
 
 
 def main():

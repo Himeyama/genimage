@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import process from 'process';
 
 let mcpClient: Client | undefined;
 let transport: StdioClientTransport | undefined;
@@ -21,14 +22,22 @@ function getServerCwd(context: vscode.ExtensionContext): string {
     return cwd;
 }
 
-function stopClient() {
-    if (mcpClient) {
-        try { mcpClient.close(); } catch (e) {}
-        mcpClient = undefined;
+async function stopClient(): Promise<void> {
+    const clientToClose = mcpClient;
+    const transportToClose = transport;
+    mcpClient = undefined;
+    transport = undefined;
+
+    // 意図的な停止なので onclose の警告通知を無効化
+    if (transportToClose) {
+        transportToClose.onclose = () => {};
     }
-    if (transport) {
-        try { transport.close(); } catch (e) {}
-        transport = undefined;
+
+    if (clientToClose) {
+        try { await clientToClose.close(); } catch (e) { console.error("Error closing mcpClient:", e); }
+    }
+    if (transportToClose) {
+        try { await transportToClose.close(); } catch (e) { console.error("Error closing transport:", e); }
     }
     console.log("MCP Server stopped.");
 }
@@ -65,7 +74,7 @@ async function initClient(context: vscode.ExtensionContext, uiModelPath?: string
 
     let pythonStderr = '';
     if (transport.stderr) {
-        transport.stderr.on('data', (chunk) => {
+        transport.stderr.on('data', (chunk: { toString: () => any; }) => {
             const msg = chunk.toString();
             pythonStderr += msg;
             console.error('[MCP Error]', msg);
@@ -195,7 +204,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                     }
                     return;
                 case 'stopServer':
-                    stopClient();
+                    await stopClient();
                     this._view!.webview.postMessage({ command: 'serverStatus', status: 'stopped' });
                     return;
                 case 'checkServerStatus':

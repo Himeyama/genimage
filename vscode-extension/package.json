@@ -52,7 +52,11 @@
           "items": {
             "type": "string"
           },
-          "default": ["run", "main.py", "--mcp"],
+          "default": [
+            "run",
+            "main.py",
+            "--mcp"
+          ],
           "description": "Arguments to pass to the MCP server executable"
         },
         "genimage.mcpServerCwd": {
@@ -78,7 +82,7 @@
     "@modelcontextprotocol/sdk": "^1.0.1"
   },
   "devDependencies": {
-    "@types/node": "^18.x",
+    "@types/node": "^18.19.130",
     "@types/vscode": "^1.80.0",
     "typescript": "^5.0.0"
   }
