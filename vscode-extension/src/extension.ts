@@ -456,16 +456,29 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             transform: scale(1.02);
         }
 
-        .loader {
-            border: 3px solid rgba(255,255,255,0.1);
-            border-top: 3px solid var(--vscode-button-background);
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px auto;
+        .skeleton-image {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border-radius: 8px;
+            background: linear-gradient(
+                90deg,
+                var(--vscode-editor-background) 25%,
+                var(--vscode-editorWidget-background) 50%,
+                var(--vscode-editor-background) 75%
+            );
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
         }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        .timer-text {
+            font-size: 12px;
+            color: var(--vscode-descriptionForeground);
+            margin-top: 8px;
+            text-align: center;
+        }
 
         /* Bottom Input Area */
         .input-area {
@@ -598,6 +611,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         const chatArea = document.getElementById('chatArea');
 
         let currentMessageId = 0;
+        const generationTimers = {};
 
         // Request initial server status
         vscode.postMessage({ command: 'checkServerStatus' });
@@ -651,19 +665,37 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'chat-message assistant';
             msgDiv.id = msgId;
-            
+
             msgDiv.innerHTML = \`
                 <div class="chat-bubble">
-                    <div class="loader"></div>
-                    <div class="status-text" id="status-\${msgId}">準備中...</div>
+                    <div class="skeleton-image"></div>
+                    <div class="timer-text" id="timer-\${msgId}">準備中... 0.0秒</div>
                 </div>
             \`;
             chatArea.appendChild(msgDiv);
             scrollToBottom();
+
+            generationTimers[msgId] = {
+                startTime: Date.now(),
+                status: '準備中',
+                intervalId: setInterval(() => {
+                    const t = generationTimers[msgId];
+                    if (!t) return;
+                    const elapsed = ((Date.now() - t.startTime) / 1000).toFixed(1);
+                    const el = document.getElementById(\`timer-\${msgId}\`);
+                    if (el) el.textContent = \`\${t.status}... \${elapsed}秒\`;
+                }, 100)
+            };
+
             return msgId;
         }
 
         function updateAssistantMessage(msgId, success, urlOrError, localPath, elapsedTime) {
+            if (generationTimers[msgId]) {
+                clearInterval(generationTimers[msgId].intervalId);
+                delete generationTimers[msgId];
+            }
+
             const msgDiv = document.getElementById(msgId);
             if (!msgDiv) return;
 
@@ -681,9 +713,8 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         }
 
         function updateAssistantStatus(msgId, text) {
-            const statusText = document.getElementById(\`status-\${msgId}\`);
-            if (statusText) {
-                statusText.textContent = text;
+            if (generationTimers[msgId]) {
+                generationTimers[msgId].status = text.replace(/\\.\\.\\.?$/, '').trim();
             }
         }
 
