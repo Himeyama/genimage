@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import process from 'process';
@@ -6,6 +7,46 @@ import process from 'process';
 let mcpClient: Client | undefined;
 let transport: StdioClientTransport | undefined;
 let activeProvider: GenImageSidebarProvider | undefined;
+let modelFileWatcher: vscode.FileSystemWatcher | undefined;
+
+function stopModelFileWatcher() {
+    if (modelFileWatcher) {
+        modelFileWatcher.dispose();
+        modelFileWatcher = undefined;
+    }
+}
+
+function startModelFileWatcher(resolvedModelPath: string) {
+    stopModelFileWatcher();
+
+    // ローカルファイルパスのみ監視（HuggingFace ID は除外）
+    if (!resolvedModelPath || !path.extname(resolvedModelPath)) { return; }
+
+    try {
+        const pattern = new vscode.RelativePattern(
+            vscode.Uri.file(path.dirname(resolvedModelPath)),
+            path.basename(resolvedModelPath)
+        );
+        // 変更・再作成を監視、削除は無視
+        modelFileWatcher = vscode.workspace.createFileSystemWatcher(pattern, false, false, true);
+
+        const handleFileChanged = async () => {
+            if (!mcpClient && !transport) { return; }
+            await stopClient();
+            if (activeProvider?.getView()) {
+                activeProvider.getView()!.webview.postMessage({ command: 'serverStatus', status: 'stopped' });
+            }
+            vscode.window.showInformationMessage(
+                `モデルファイルが更新されました。サーバーを停止しました: ${path.basename(resolvedModelPath)}`
+            );
+        };
+
+        modelFileWatcher.onDidChange(handleFileChanged);
+        modelFileWatcher.onDidCreate(handleFileChanged);
+    } catch (e) {
+        console.error('Failed to start model file watcher:', e);
+    }
+}
 
 function getServerCwd(context: vscode.ExtensionContext): string {
     const config = vscode.workspace.getConfiguration('genimage');
@@ -23,6 +64,7 @@ function getServerCwd(context: vscode.ExtensionContext): string {
 }
 
 async function stopClient(): Promise<void> {
+    stopModelFileWatcher();
     const clientToClose = mcpClient;
     const transportToClose = transport;
     mcpClient = undefined;
@@ -110,9 +152,15 @@ async function initClient(context: vscode.ExtensionContext, uiModelPath?: string
     };
 
     await mcpClient.connect(transport);
-    
+
     if (activeProvider && activeProvider.getView()) {
-         activeProvider.getView()!.webview.postMessage({ command: 'serverStatus', status: 'running' });
+        activeProvider.getView()!.webview.postMessage({ command: 'serverStatus', status: 'running' });
+    }
+
+    // ローカルモデルファイルを監視して、書き換わったらサーバーを自動停止
+    if (modelPath) {
+        const resolvedModelPath = path.isAbsolute(modelPath) ? modelPath : path.join(cwd, modelPath);
+        startModelFileWatcher(resolvedModelPath);
     }
 
     return mcpClient;
