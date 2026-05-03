@@ -100,6 +100,8 @@ async def handle_generate_image(name: str, arguments: dict):
     prompt = arguments.get("prompt", "").strip()
     negative_prompt = arguments.get("negative_prompt", default_negative_prompt)
     steps = arguments.get("steps", 40)
+    width = arguments.get("width", 1024)
+    height = arguments.get("height", 1024)
 
     if not prompt:
         return [TextContent(type="text", text="エラー: プロンプトが空です")]
@@ -113,6 +115,7 @@ async def handle_generate_image(name: str, arguments: dict):
                 output_base_path=client_provided_output_path,
                 prefix_message="MCP", output="path",
                 num_inference_steps=steps,
+                width=width, height=height,
             )
             if image_path:
                 return [TextContent(type="text", text=json.dumps({"success": True, "output": image_path}))]
@@ -127,6 +130,7 @@ async def handle_generate_image(name: str, arguments: dict):
                 output_base_path=output_base_path,
                 prefix_message="MCP", output="base64",
                 num_inference_steps=steps,
+                width=width, height=height,
             )
             if base64_image:
                 return [TextContent(type="text", text=json.dumps({"success": True, "output": base64_image}))]
@@ -241,6 +245,8 @@ async def run_mcp_server():
                         "negative_prompt": {"type": "string", "description": "ネガティブプロンプト（オプション）"},
                         "output_path": {"type": "string", "description": "出力ベースパス（オプション）"},
                         "steps": {"type": "integer", "description": "推論ステップ数（デフォルト: 40）"},
+                        "width": {"type": "integer", "description": "生成画像の幅（デフォルト: 1024）"},
+                        "height": {"type": "integer", "description": "生成画像の高さ（デフォルト: 1024）"},
                     },
                     "required": ["prompt"],
                 },
@@ -373,13 +379,13 @@ def save_images(pipe, prompt, negative_prompt, output_path, num_images=1, num_in
     return saved_paths
 
 
-def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="images/output.png", prefix_message="", output="path", num_inference_steps=20):
+def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="images/output.png", prefix_message="", output="path", num_inference_steps=20, width=1024, height=1024):
     """Generates a single image and saves it to a unique path."""
     if prefix_message == "MCP":
         pipe.set_progress_bar_config(disable=True)
 
     try:
-        result = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps)
+        result = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps, width=width, height=height)
         for image in result.images:
             path = output_base_path
             if output_base_path:
@@ -441,6 +447,7 @@ def run_normal_mode(pipe, args, output_base_path, parser):
     """Handles image generation in normal mode."""
     logger.info(f"次のプロンプトによって生成される {args.num_images} 枚の画像: '{args.prompt}'")
     logger.info(f"推論ステップ数: {args.steps}")
+    logger.info(f"解像度: {args.width}x{args.height}")
     for _ in range(args.num_images):
         try:
             path = generate_and_save_image(
@@ -450,6 +457,8 @@ def run_normal_mode(pipe, args, output_base_path, parser):
                 output_base_path=output_base_path,
                 prefix_message="Normal mode",
                 num_inference_steps=args.steps,
+                width=args.width,
+                height=args.height,
             )
             if path:
                 logger.success(f"生成画像: {path}")
@@ -475,6 +484,8 @@ def main():
     parser.add_argument("--output", "-o", type=str, default="images/output.png", help="生成された画像の出力ファイル名 (デフォルト: output.png)")
     parser.add_argument("--num-images", "-n", type=int, default=1, help="生成する画像の数 (デフォルト: 1、通常モードのみ)")
     parser.add_argument("--steps", type=int, default=40, help="推論ステップ数 (デフォルト: 40)")
+    parser.add_argument("--width", "-W", type=int, default=1024, help="生成画像の幅 (デフォルト: 1024)")
+    parser.add_argument("--height", "-H", type=int, default=1024, help="生成画像の高さ (デフォルト: 1024)")
     args = parser.parse_args()
 
     # モデルロード前に全引数を検証
