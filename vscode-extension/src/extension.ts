@@ -276,7 +276,9 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             this._view.webview.postMessage({ command: 'status', msgId: msgId, text: '画像生成中...' });
 
             const cwd = getServerCwd(this._context);
-            const defaultOutputPath = vscode.Uri.joinPath(vscode.Uri.file(cwd), 'images', `vscode-output-${Date.now()}.png`).fsPath;
+            const _now = new Date();
+            const _ts = `${_now.getFullYear()}${String(_now.getMonth() + 1).padStart(2, '0')}${String(_now.getDate()).padStart(2, '0')}${String(_now.getHours()).padStart(2, '0')}${String(_now.getMinutes()).padStart(2, '0')}${String(_now.getSeconds()).padStart(2, '0')}`;
+            const defaultOutputPath = vscode.Uri.joinPath(vscode.Uri.file(cwd), 'images', `vscode-output-${_ts}.png`).fsPath;
 
             const startTime = performance.now();
             let result: any;
@@ -366,7 +368,6 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         .settings-bar {
             padding: 10px 15px;
             background: var(--vscode-editorWidget-background);
-            border-bottom: 1px solid var(--vscode-widget-border);
             display: flex;
             flex-direction: column;
             gap: 10px;
@@ -443,7 +444,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             display: flex;
             flex-direction: column;
             gap: 15px;
-            background-color: var(--vscode-editor-background);
+            background-color: var(--vscode-editorWidget-background);
         }
 
         .chat-message {
@@ -533,7 +534,6 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         .input-area {
             padding: 10px 15px;
             background: var(--vscode-editorWidget-background);
-            border-top: 1px solid var(--vscode-widget-border);
             display: flex;
             flex-direction: column;
             gap: 10px;
