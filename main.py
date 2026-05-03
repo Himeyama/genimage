@@ -347,7 +347,9 @@ def load_pipeline(model_id, device="cuda", mode="default", compile=False, lcm=Fa
     if device != "cpu":
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
-        torch.backends.cudnn.benchmark = True
+        # benchmark=True はプロセス内でのみキャッシュされるため、
+        # 長時間起動し続ける MCP モードのみで有効にする（CLI では毎回 VAE decode 時に数分かかる）
+        # torch.backends.cudnn.benchmark = (mode == "mcp")
 
     dtype_args = {
         "use_safetensors": True,
@@ -415,26 +417,33 @@ def generate_and_save_image(pipe, prompt, negative_prompt, output_base_path="ima
         pipe.set_progress_bar_config(disable=True)
 
     try:
+        import gc
         import time
+        import torch
         _t0 = time.perf_counter()
         result = pipe(prompt, negative_prompt=negative_prompt, num_inference_steps=num_inference_steps, width=width, height=height)
         logger.info(f"{prefix_message} 生成時間: {time.perf_counter() - _t0:.1f}s")
-        for image in result.images:
-            path = output_base_path
-            if output_base_path:
-                try:
-                    path = unique_path(output_base_path)
-                except KeyboardInterrupt:
-                    logger.warning(f"{prefix_message} interrupted by user. Exiting.")
-                    sys.exit(1)
+        image = result.images[0]
+        del result
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-            if output == "base64":
-                buffered = io.BytesIO()
-                image.save(buffered, format="PNG")
-                return base64.b64encode(buffered.getvalue()).decode('utf-8')
+        path = output_base_path
+        if output_base_path:
+            try:
+                path = unique_path(output_base_path)
+            except KeyboardInterrupt:
+                logger.warning(f"{prefix_message} interrupted by user. Exiting.")
+                sys.exit(1)
 
-            image.save(path)
-            return path
+        if output == "base64":
+            buffered = io.BytesIO()
+            image.save(buffered, format="PNG")
+            return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+        image.save(path)
+        return path
     except Exception as e:
         logger.error(f"{prefix_message} Error generating image for prompt '{prompt}': {e}")
         raise
@@ -519,9 +528,9 @@ def main():
     parser.add_argument("--negative-prompt", "-np", type=str, default=None, help="画像生成のためのネガティブプロンプト (オプション)")
     parser.add_argument("--output", "-o", type=str, default="images/output.png", help="生成された画像の出力ファイル名 (デフォルト: output.png)")
     parser.add_argument("--num-images", "-n", type=int, default=1, help="生成する画像の数 (デフォルト: 1、通常モードのみ)")
-    parser.add_argument("--steps", type=int, default=None, help="推論ステップ数 (デフォルト: --lcm 時は 8、通常時は 40)")
+    parser.add_argument("--steps", type=int, default=None, help="推論ステップ数 (デフォルト: --lcm 時は 10、通常時は 40)")
     parser.add_argument("--compile", action="store_true", help="torch.compile で UNet を最適化します（初回実行時はウォームアップに数分かかります）")
-    parser.add_argument("--lcm", action="store_true", help="LCM スケジューラで高速推論を行います（推奨ステップ数: 8、最大約5倍高速化）")
+    parser.add_argument("--lcm", action="store_true", help="LCM スケジューラで高速推論を行います（推奨ステップ数: 10、最大約5倍高速化）")
     parser.add_argument("--width", "-W", type=int, default=1024, help="生成画像の幅 (デフォルト: 1024)")
     parser.add_argument("--height", "-H", type=int, default=1024, help="生成画像の高さ (デフォルト: 1024)")
     args = parser.parse_args()
@@ -546,7 +555,7 @@ def main():
     # LCM モードに合わせてデフォルトステップ数を設定
     global DEFAULT_STEPS
     if args.steps is None:
-        args.steps = 8 if args.lcm else 40
+        args.steps = 10 if args.lcm else 40
     DEFAULT_STEPS = args.steps
 
     # 出力ファイルの準備（ユニーク化はループ内で行う）

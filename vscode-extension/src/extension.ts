@@ -84,14 +84,19 @@ async function stopClient(): Promise<void> {
     console.log("MCP Server stopped.");
 }
 
-async function initClient(context: vscode.ExtensionContext, uiModelPath?: string): Promise<Client> {
+async function initClient(context: vscode.ExtensionContext, uiModelPath?: string, lcm?: boolean, compile?: boolean): Promise<Client> {
     if (mcpClient && transport) {
         return mcpClient;
     }
 
     const config = vscode.workspace.getConfiguration('genimage');
     const serverPath = config.get<string>('mcpServerPath') || 'uv';
-    const serverArgs = config.get<string[]>('mcpServerArgs') || ['run', 'main.py', '--mcp'];
+    const baseArgs = config.get<string[]>('mcpServerArgs') || ['run', 'main.py', '--mcp'];
+    const serverArgs = [
+        ...baseArgs,
+        ...(lcm ? ['--lcm'] : []),
+        ...(compile ? ['--compile'] : []),
+    ];
     const modelPath = uiModelPath !== undefined ? uiModelPath : (config.get<string>('modelPath') || '');
     const cwd = getServerCwd(context);
 
@@ -245,7 +250,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                 case 'startServer':
                     try {
                         this._view!.webview.postMessage({ command: 'serverStatus', status: 'starting' });
-                        await initClient(this._context, message.modelPath);
+                        await initClient(this._context, message.modelPath, message.lcm, message.compile);
                     } catch (e: any) {
                         vscode.window.showErrorMessage('サーバーの起動に失敗しました: ' + e.message);
                         this._view!.webview.postMessage({ command: 'serverStatus', status: 'stopped' });
@@ -603,6 +608,15 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                 <option value="img2img">Image to Image (画像から画像生成)</option>
             </select>
         </div>
+
+        <div class="form-group-row" style="gap: 16px;">
+            <label style="display: flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer;">
+                <input type="checkbox" id="lcmCheck" /> LCM
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; font-weight: normal; cursor: pointer;">
+                <input type="checkbox" id="compileCheck" /> compile
+            </label>
+        </div>
     </div>
 
     <!-- Middle Chat Area -->
@@ -657,6 +671,13 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         const pathDisplay = document.getElementById('pathDisplay');
         const modelPathUI = document.getElementById('modelPathUI');
         const chatArea = document.getElementById('chatArea');
+        const lcmCheck = document.getElementById('lcmCheck');
+        const compileCheck = document.getElementById('compileCheck');
+        const stepsInput = document.getElementById('steps');
+
+        lcmCheck.addEventListener('change', () => {
+            stepsInput.value = lcmCheck.checked ? '10' : '40';
+        });
 
         let currentMessageId = 0;
         const generationTimers = {};
@@ -666,7 +687,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
 
         toggleServerBtn.addEventListener('click', () => {
             if (currentServerState === 'stopped') {
-                vscode.postMessage({ command: 'startServer', modelPath: modelPathUI.value.trim() });
+                vscode.postMessage({ command: 'startServer', modelPath: modelPathUI.value.trim(), lcm: lcmCheck.checked, compile: compileCheck.checked });
             } else if (currentServerState === 'running') {
                 vscode.postMessage({ command: 'stopServer' });
             }
