@@ -36,7 +36,9 @@ wsl -- uv run --directory $HOME/genimage python -m main --model-id models/<MODEL
 usage: main.py [-h] [--mcp] [--img2img] [--input-image INPUT_IMAGE] [--strength STRENGTH]
                [--model-id MODEL_ID] [--negative-prompt NEGATIVE_PROMPT] [--output OUTPUT]
                [--num-images NUM_IMAGES] [--steps STEPS] [--compile] [--lcm]
-               [--width WIDTH] [--height HEIGHT] [prompt]
+               [--width WIDTH] [--height HEIGHT]
+               [--vae VAE] [--lora LORA_PATH] [--lora-scale LORA_SCALE]
+               [prompt]
 ```
 
 画像生成 AI (Stable Diffusion XL) を使用します。
@@ -54,20 +56,23 @@ usage: main.py [-h] [--mcp] [--img2img] [--input-image INPUT_IMAGE] [--strength 
 - `--negative-prompt NEGATIVE_PROMPT`, `-np`: ネガティブプロンプト (オプション)
 - `--output OUTPUT`, `-o`: 出力ファイル名 (デフォルト: `images/output.png`)
 - `--num-images NUM_IMAGES`, `-n`: 生成する画像の数 (デフォルト: 1、通常モードのみ)
-- `--steps STEPS`: 推論ステップ数 (デフォルト: `--lcm` 時は 8、通常時は 40)
+- `--steps STEPS`: 推論ステップ数 (デフォルト: `--lcm` 時は 10、通常時は 40)
 - `--width WIDTH`, `-W`: 生成画像の幅 px (デフォルト: 1024)
 - `--height HEIGHT`, `-H`: 生成画像の高さ px (デフォルト: 1024)
 - `--compile`: `torch.compile` で UNet を最適化します（初回実行時はウォームアップに数分かかります）
 - `--lcm`: LCM スケジューラで高速推論を行います（最大約 5 倍高速）
+- `--vae VAE`: VAE ファイルパス（`.safetensors` 等）または HuggingFace モデル ID（省略時はチェックポイント内蔵 VAE を使用）
+- `--lora LORA_PATH`: LoRA ファイルパス（複数指定可）
+- `--lora-scale LORA_SCALE`: LoRA の適用スケール 0.0–1.0 (デフォルト: 0.8)
 
 ## 高速化オプション
 
 ### LCM モード (`--lcm`)
-LCM (Latent Consistency Model) スケジューラを使用することで、推論ステップ数をデフォルトの 40 から 8 に削減し、最大約 5 倍の高速化が可能です。
+LCM (Latent Consistency Model) スケジューラを使用することで、推論ステップ数をデフォルトの 40 から 10 に削減し、最大約 5 倍の高速化が可能です。
 
 ```sh
 uv run python -m main --model-id "./models/sdxl.safetensors" --lcm "girl"
-# 推論ステップ数が自動的に 8 に設定される
+# 推論ステップ数が自動的に 10 に設定される
 ```
 
 ### torch.compile (`--compile`)
@@ -89,6 +94,52 @@ pip install "triton-windows>=3.2,<3.3"
 
 ```sh
 uv run python -m main --model-id "./models/sdxl.safetensors" --lcm --compile "girl"
+```
+
+## VAE・LoRA の使用
+
+### VAE の差し替え (`--vae`)
+チェックポイントに内蔵されている VAE を外部ファイルで上書きできます。カラーシフトの補正や特定の画風への最適化に有効です。
+
+```sh
+uv run python -m main --model-id "./models/sdxl.safetensors" \
+  --vae "./models/vae.safetensors" \
+  "girl"
+```
+
+HuggingFace のモデル ID も指定できます。
+
+```sh
+uv run python -m main --model-id "./models/sdxl.safetensors" \
+  --vae "madebyollin/sdxl-vae-fp16-fix" \
+  "girl"
+```
+
+### LoRA の適用 (`--lora`, `--lora-scale`)
+LoRA ファイルを読み込み、モデルの画風や特定キャラクターへの適応が可能です。`--lora` は複数回指定できます。
+
+```sh
+# 単一 LoRA
+uv run python -m main --model-id "./models/sdxl.safetensors" \
+  --lora "./models/lora/style.safetensors" \
+  --lora-scale 0.8 \
+  "girl"
+
+# 複数 LoRA（スケールは全 LoRA に共通で適用）
+uv run python -m main --model-id "./models/sdxl.safetensors" \
+  --lora "./models/lora/style.safetensors" \
+  --lora "./models/lora/character.safetensors" \
+  --lora-scale 0.7 \
+  "girl"
+```
+
+### VAE と LoRA の組み合わせ
+```sh
+uv run python -m main --model-id "./models/sdxl.safetensors" \
+  --vae "./models/vae.safetensors" \
+  --lora "./models/lora/style.safetensors" \
+  --lora-scale 0.8 \
+  "girl"
 ```
 
 ## モデルの設定と実行例

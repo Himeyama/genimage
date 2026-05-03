@@ -340,7 +340,7 @@ def unique_path(path):
     return candidate
 
 
-def load_pipeline(model_id, device="cuda", mode="default", compile=False, lcm=False):
+def load_pipeline(model_id, device="cuda", mode="default", compile=False, lcm=False, vae_path=None, lora_paths=None, lora_scale=0.8):
     import torch
     from diffusers import StableDiffusionXLPipeline
 
@@ -351,9 +351,10 @@ def load_pipeline(model_id, device="cuda", mode="default", compile=False, lcm=Fa
         # 長時間起動し続ける MCP モードのみで有効にする（CLI では毎回 VAE decode 時に数分かかる）
         # torch.backends.cudnn.benchmark = (mode == "mcp")
 
+    dtype = torch.float16 if device != "cpu" else torch.float32
     dtype_args = {
         "use_safetensors": True,
-        "torch_dtype": torch.float16 if device != "cpu" else torch.float32,
+        "torch_dtype": dtype,
     }
 
     if os.path.exists(model_id):
@@ -372,7 +373,36 @@ def load_pipeline(model_id, device="cuda", mode="default", compile=False, lcm=Fa
         pipe = StableDiffusionXLPipeline.from_pretrained(model_id, **dtype_args)
         pipe.to(device)
 
+    if vae_path:
+        from diffusers import AutoencoderKL
+        logger.info(f"VAE を読み込んでいます: {vae_path}")
+        if os.path.isfile(vae_path):
+            vae = AutoencoderKL.from_single_file(vae_path, torch_dtype=dtype)
+        else:
+            vae = AutoencoderKL.from_pretrained(vae_path, torch_dtype=dtype)
+        vae.to(device)
+        pipe.vae = vae
+        logger.info("VAE を差し替えました")
+
     pipe.enable_vae_slicing()
+
+    if lora_paths:
+        for i, lora_path in enumerate(lora_paths):
+            adapter_name = f"lora_{i}"
+            logger.info(f"LoRA を読み込んでいます ({i + 1}/{len(lora_paths)}): {lora_path}")
+            if os.path.isfile(lora_path):
+                lora_dir = os.path.dirname(os.path.abspath(lora_path))
+                lora_file = os.path.basename(lora_path)
+                pipe.load_lora_weights(lora_dir, weight_name=lora_file, adapter_name=adapter_name)
+            else:
+                pipe.load_lora_weights(lora_path, adapter_name=adapter_name)
+        if len(lora_paths) > 1:
+            adapter_names = [f"lora_{i}" for i in range(len(lora_paths))]
+            pipe.set_adapters(adapter_names, adapter_weights=[lora_scale] * len(lora_paths))
+            pipe.fuse_lora(lora_scale=1.0)
+        else:
+            pipe.fuse_lora(lora_scale=lora_scale)
+        logger.info(f"LoRA を適用しました ({len(lora_paths)} 個、スケール: {lora_scale})")
 
     if lcm:
         import warnings
@@ -533,6 +563,9 @@ def main():
     parser.add_argument("--lcm", action="store_true", help="LCM スケジューラで高速推論を行います（推奨ステップ数: 10、最大約5倍高速化）")
     parser.add_argument("--width", "-W", type=int, default=1024, help="生成画像の幅 (デフォルト: 1024)")
     parser.add_argument("--height", "-H", type=int, default=1024, help="生成画像の高さ (デフォルト: 1024)")
+    parser.add_argument("--vae", type=str, default=None, help="VAE ファイルパス（.safetensors 等）またはモデル ID（省略時はチェックポイント内蔵 VAE を使用）")
+    parser.add_argument("--lora", action="append", dest="lora_paths", default=None, metavar="LORA_PATH", help="LoRA ファイルパス（複数指定可: --lora path1 --lora path2）")
+    parser.add_argument("--lora-scale", type=float, default=0.8, help="LoRA の適用スケール 0.0-1.0 (デフォルト: 0.8)")
     args = parser.parse_args()
 
     # モデルロード前に全引数を検証
@@ -577,11 +610,32 @@ def main():
         logger.error(f"モデルが見つかりません: {model_id}")
         sys.exit(1)
 
+    if args.vae:
+        is_local_vae = (
+            os.path.isabs(args.vae)
+            or args.vae.startswith(("./", ".\\", "../", "..\\"))
+            or bool(os.path.splitext(args.vae)[1])
+        )
+        if is_local_vae and not os.path.exists(args.vae):
+            logger.error(f"VAE ファイルが見つかりません: {args.vae}")
+            sys.exit(1)
+
+    if args.lora_paths:
+        for lora_path in args.lora_paths:
+            is_local_lora = (
+                os.path.isabs(lora_path)
+                or lora_path.startswith(("./", ".\\", "../", "..\\"))
+                or bool(os.path.splitext(lora_path)[1])
+            )
+            if is_local_lora and not os.path.exists(lora_path):
+                logger.error(f"LoRA ファイルが見つかりません: {lora_path}")
+                sys.exit(1)
+
     if args.mcp:
         from diffusers.utils import logging as diffusers_logging
         diffusers_logging.disable_progress_bar()
         try:
-            pipe = load_pipeline(model_id, device=device, mode="mcp", compile=args.compile, lcm=args.lcm)
+            pipe = load_pipeline(model_id, device=device, mode="mcp", compile=args.compile, lcm=args.lcm, vae_path=args.vae, lora_paths=args.lora_paths, lora_scale=args.lora_scale)
         except Exception as e:
             logger.error(f"モデルの読み込みに失敗しました: {e}")
             sys.exit(1)
@@ -590,7 +644,7 @@ def main():
         logger.info(f"{device} を使用します")
         logger.info(f"{model_id} を読み込んでいます...")
         try:
-            pipe = load_pipeline(model_id, device=device, compile=args.compile, lcm=args.lcm)
+            pipe = load_pipeline(model_id, device=device, compile=args.compile, lcm=args.lcm, vae_path=args.vae, lora_paths=args.lora_paths, lora_scale=args.lora_scale)
         except Exception as e:
             logger.error(f"モデルの読み込みに失敗しました: {e}")
             sys.exit(1)
@@ -599,7 +653,7 @@ def main():
         logger.info(f"{device} を使用します")
         logger.info(f"{model_id} を読み込んでいます...")
         try:
-            pipe = load_pipeline(model_id, device=device, compile=args.compile, lcm=args.lcm)
+            pipe = load_pipeline(model_id, device=device, compile=args.compile, lcm=args.lcm, vae_path=args.vae, lora_paths=args.lora_paths, lora_scale=args.lora_scale)
         except Exception as e:
             logger.error(f"モデルの読み込みに失敗しました: {e}")
             sys.exit(1)
