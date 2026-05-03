@@ -84,7 +84,7 @@ async function stopClient(): Promise<void> {
     console.log("MCP Server stopped.");
 }
 
-async function initClient(context: vscode.ExtensionContext, uiModelPath?: string): Promise<Client> {
+async function initClient(context: vscode.ExtensionContext, uiModelPath?: string, uiVaePath?: string, uiLoraPaths?: string[], uiLoraScale?: number): Promise<Client> {
     if (mcpClient && transport) {
         return mcpClient;
     }
@@ -105,6 +105,21 @@ async function initClient(context: vscode.ExtensionContext, uiModelPath?: string
         env['MODEL'] = modelPath.trim();
         // UIでの変更を永続化（任意）
         config.update('modelPath', modelPath.trim(), vscode.ConfigurationTarget.Workspace).then(undefined, e => console.error(e));
+    }
+
+    if (uiVaePath && uiVaePath.trim()) {
+        serverArgs.push('--vae', uiVaePath.trim());
+    }
+
+    if (uiLoraPaths && uiLoraPaths.length > 0) {
+        for (const lp of uiLoraPaths) {
+            if (lp.trim()) {
+                serverArgs.push('--lora', lp.trim());
+            }
+        }
+        if (uiLoraScale !== undefined) {
+            serverArgs.push('--lora-scale', String(uiLoraScale));
+        }
     }
 
     transport = new StdioClientTransport({
@@ -218,7 +233,7 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (message) => {
             switch (message.command) {
                 case 'generate':
-                    await this._handleGenerate(message.data, message.msgId, message.modelPath);
+                    await this._handleGenerate(message.data, message.msgId, message.modelPath, message.vaePath, message.loraPaths, message.loraScale);
                     return;
                 case 'pickImage':
                     const uri = await vscode.window.showOpenDialog({
@@ -240,13 +255,33 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                         webviewView.webview.postMessage({ command: 'modelPicked', path: modelUri[0].fsPath });
                     }
                     return;
+                case 'pickVae':
+                    const vaeUri = await vscode.window.showOpenDialog({
+                        canSelectMany: false,
+                        openLabel: 'Select VAE',
+                        filters: { 'Models': ['safetensors', 'ckpt', 'bin'] }
+                    });
+                    if (vaeUri && vaeUri[0]) {
+                        webviewView.webview.postMessage({ command: 'vaePicked', path: vaeUri[0].fsPath });
+                    }
+                    return;
+                case 'pickLora':
+                    const loraUri = await vscode.window.showOpenDialog({
+                        canSelectMany: false,
+                        openLabel: 'Select LoRA',
+                        filters: { 'Models': ['safetensors', 'pt', 'ckpt', 'bin'] }
+                    });
+                    if (loraUri && loraUri[0]) {
+                        webviewView.webview.postMessage({ command: 'loraPicked', path: loraUri[0].fsPath });
+                    }
+                    return;
                 case 'error':
                     vscode.window.showErrorMessage(message.text);
                     return;
                 case 'startServer':
                     try {
                         this._view!.webview.postMessage({ command: 'serverStatus', status: 'starting' });
-                        await initClient(this._context, message.modelPath);
+                        await initClient(this._context, message.modelPath, message.vaePath, message.loraPaths, message.loraScale);
                     } catch (e: any) {
                         vscode.window.showErrorMessage('サーバーの起動に失敗しました: ' + e.message);
                         this._view!.webview.postMessage({ command: 'serverStatus', status: 'stopped' });
@@ -266,13 +301,13 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private async _handleGenerate(data: any, msgId: string, modelPath?: string) {
+    private async _handleGenerate(data: any, msgId: string, modelPath?: string, vaePath?: string, loraPaths?: string[], loraScale?: number) {
         if (!this._view) return;
 
         this._view.webview.postMessage({ command: 'status', msgId: msgId, text: 'MCPサーバーに接続中...' });
 
         try {
-            const client = await initClient(this._context, modelPath);
+            const client = await initClient(this._context, modelPath, vaePath, loraPaths, loraScale);
             this._view.webview.postMessage({ command: 'status', msgId: msgId, text: '画像生成中...' });
 
             const cwd = getServerCwd(this._context);
@@ -598,6 +633,26 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         </div>
 
         <div class="form-group-row">
+            <label style="flex-shrink: 0;">VAE</label>
+            <input type="text" id="vaePathUI" placeholder="VAE パス (省略可)" style="flex: 1;" />
+            <button type="button" id="pickVaeBtn" class="btn-secondary" style="flex-shrink: 0;">参照</button>
+        </div>
+
+        <div class="form-group">
+            <label>LoRA</label>
+            <div class="form-group-row" style="margin-top: 3px;">
+                <input type="text" id="loraInputUI" placeholder="LoRA パス" style="flex: 1;" />
+                <button type="button" id="pickLoraBtn" class="btn-secondary" style="flex-shrink: 0;">参照</button>
+                <button type="button" id="addLoraBtn" class="btn-secondary" style="flex-shrink: 0;">追加</button>
+            </div>
+            <div id="loraList" style="display: flex; flex-direction: column; gap: 3px; margin-top: 3px;"></div>
+            <div class="form-group-row" id="loraScaleRow" style="display: none; margin-top: 4px;">
+                <label style="flex-shrink: 0;">スケール</label>
+                <input type="number" id="loraScale" value="0.8" step="0.05" min="0.0" max="1.0" style="width: 70px;" />
+            </div>
+        </div>
+
+        <div class="form-group-row">
             <label style="flex-shrink: 0;">モード</label>
             <select id="mode" style="flex: 1;">
                 <option value="txt2img">Text to Image (テキストから画像生成)</option>
@@ -653,12 +708,36 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
         const img2imgSections = document.querySelectorAll('.img2img-only');
         const pickImageBtn = document.getElementById('pickImageBtn');
         const pickModelBtn = document.getElementById('pickModelBtn');
+        const pickVaeBtn = document.getElementById('pickVaeBtn');
+        const pickLoraBtn = document.getElementById('pickLoraBtn');
+        const addLoraBtn = document.getElementById('addLoraBtn');
+        const loraInputUI = document.getElementById('loraInputUI');
         const generateBtn = document.getElementById('generateBtn');
         const imagePathInput = document.getElementById('imagePath');
         const pathDisplay = document.getElementById('pathDisplay');
         const modelPathUI = document.getElementById('modelPathUI');
+        const vaePathUI = document.getElementById('vaePathUI');
         const chatArea = document.getElementById('chatArea');
         const stepsInput = document.getElementById('steps');
+
+        let loraPaths = [];
+
+        function renderLoraList() {
+            const list = document.getElementById('loraList');
+            const scaleRow = document.getElementById('loraScaleRow');
+            list.innerHTML = loraPaths.map((p, i) => \`
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <span style="flex:1;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="\${p}">\${p.split(/\\\\|\\//).pop()}</span>
+                    <button onclick="removeLora(\${i})" class="btn-secondary" style="padding:2px 5px;flex-shrink:0;">×</button>
+                </div>
+            \`).join('');
+            scaleRow.style.display = loraPaths.length > 0 ? 'flex' : 'none';
+        }
+
+        window.removeLora = function(i) {
+            loraPaths.splice(i, 1);
+            renderLoraList();
+        };
 
         let currentMessageId = 0;
         const generationTimers = {};
@@ -668,7 +747,13 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
 
         toggleServerBtn.addEventListener('click', () => {
             if (currentServerState === 'stopped') {
-                vscode.postMessage({ command: 'startServer', modelPath: modelPathUI.value.trim() });
+                vscode.postMessage({
+                    command: 'startServer',
+                    modelPath: modelPathUI.value.trim(),
+                    vaePath: vaePathUI.value.trim(),
+                    loraPaths: [...loraPaths],
+                    loraScale: parseFloat(document.getElementById('loraScale').value)
+                });
             } else if (currentServerState === 'running') {
                 vscode.postMessage({ command: 'stopServer' });
             }
@@ -685,6 +770,23 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
 
         pickModelBtn.addEventListener('click', () => {
             vscode.postMessage({ command: 'pickModel' });
+        });
+
+        pickVaeBtn.addEventListener('click', () => {
+            vscode.postMessage({ command: 'pickVae' });
+        });
+
+        pickLoraBtn.addEventListener('click', () => {
+            vscode.postMessage({ command: 'pickLora' });
+        });
+
+        addLoraBtn.addEventListener('click', () => {
+            const p = loraInputUI.value.trim();
+            if (p) {
+                loraPaths.push(p);
+                loraInputUI.value = '';
+                renderLoraList();
+            }
         });
 
         function appendUserMessage(prompt, negativePrompt, steps, mode, strength, imgPath) {
@@ -803,7 +905,15 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
             appendUserMessage(prompt, negativePrompt, steps, mode, data.strength, data.imagePath);
             activeMessageId = appendAssistantLoader();
 
-            vscode.postMessage({ command: 'generate', data, msgId: activeMessageId, modelPath: modelPathUI.value.trim() });
+            vscode.postMessage({
+                command: 'generate',
+                data,
+                msgId: activeMessageId,
+                modelPath: modelPathUI.value.trim(),
+                vaePath: vaePathUI.value.trim(),
+                loraPaths: [...loraPaths],
+                loraScale: parseFloat(document.getElementById('loraScale').value)
+            });
         });
 
         window.addEventListener('message', event => {
@@ -842,6 +952,12 @@ class GenImageSidebarProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'modelPicked':
                     modelPathUI.value = message.path;
+                    break;
+                case 'vaePicked':
+                    vaePathUI.value = message.path;
+                    break;
+                case 'loraPicked':
+                    loraInputUI.value = message.path;
                     break;
                 case 'status':
                     if (message.msgId) {
