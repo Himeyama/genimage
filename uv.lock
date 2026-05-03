@@ -278,6 +278,7 @@ dependencies = [
     { name = "torchaudio" },
     { name = "torchvision" },
     { name = "transformers" },
+    { name = "triton-windows" },
 ]
 
 [package.metadata]
@@ -295,6 +296,7 @@ requires-dist = [
     { name = "torchaudio", specifier = "==2.6.0+cu124", index = "https://download.pytorch.org/whl/cu124" },
     { name = "torchvision", specifier = "==0.21.0+cu124", index = "https://download.pytorch.org/whl/cu124" },
     { name = "transformers", specifier = ">=4.57.1" },
+    { name = "triton-windows", specifier = ">=3.2,<3.3" },
 ]
 
 [[package]]
@@ -1375,6 +1377,14 @@ version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/30/37a3384d1e2e9320331baca41e835e90a3767303642c7a80d4510152cbcf/triton-3.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e5dfa23ba84541d7c0a531dfce76d8bcd19159d50a4a8b14ad01e91734a5c1b0", size = 253154278, upload-time = "2025-01-22T19:13:54.221Z" },
+]
+
+[[package]]
+name = "triton-windows"
+version = "3.2.0.post21"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/76/59/dbddd9a7ed29638e283b2cffe79c9c67b288e03ee3447ff6b3b2d5c37a79/triton_windows-3.2.0.post21-cp313-cp313-win_amd64.whl", hash = "sha256:3a17037a583733ad476fa382143342c810f4c71b622734a3a714544303979146", size = 39711275, upload-time = "2025-10-15T08:46:06.047Z" },
 ]
 
 [[package]]

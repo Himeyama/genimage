@@ -18,6 +18,7 @@ dependencies = [
     "torchaudio==2.6.0+cu124",
     "torchvision==0.21.0+cu124",
     "transformers>=4.57.1",
+    "triton-windows>=3.2,<3.3",
 ]
 
 [tool.uv]
